@@ -82,6 +82,7 @@ exports.handler = async (event) => {
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: text.trim() }]
     });
+    console.log('API call succeeded');
 
     const raw = message.content[0].text;
     const parsed = extractJSON(raw);
@@ -101,11 +102,12 @@ exports.handler = async (event) => {
 
     return { statusCode: 200, headers, body: JSON.stringify(result) };
   } catch (e) {
-    console.error('claude-understand error:', e.message);
+    const detail = e?.status ? `HTTP ${e.status}: ${e.message}` : e.message;
+    console.error('claude-understand error:', detail, e?.error || '');
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ error: `Parsing failed: ${e.message}` })
+      body: JSON.stringify({ error: `Parsing failed: ${detail}`, detail: e?.error })
     };
   }
 };
