@@ -881,7 +881,11 @@ async function doGenerate() {
         extraContext: c.extraContext || ''
       })
     });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
+    if (!res.ok) {
+      let detail = 'HTTP ' + res.status;
+      try { const e = await res.json(); if (e.error) detail = e.error; } catch {}
+      throw new Error(detail);
+    }
     const data = await res.json();
     if (!data.error) {
       if (data.outputs && data.outputs.length) CASES.merge.outputs = data.outputs;
@@ -1308,7 +1312,7 @@ function updateCheckBtnState() {
   btn.style.cursor = valid ? '' : 'not-allowed';
   btn.title = valid ? '' : 'Please describe your task first (or load an example)';
 }
-function checkDescribeAndProceed() {
+async function checkDescribeAndProceed() {
   if (!isDescribeFormValid()) {
     const pz = document.getElementById('pz-empty');
     if (pz && pz.style.display !== 'none') {
@@ -1316,6 +1320,41 @@ function checkDescribeAndProceed() {
       setTimeout(() => { pz.style.borderColor = ''; }, 1500);
     }
     return;
+  }
+  // If user filled the form manually without using the paste-zone parse, call understand API now
+  const hasParsed = document.getElementById('pz-banner').style.display !== 'none';
+  if (!hasParsed && !originalPromptText) {
+    const goalVal = (document.getElementById('inp-goal').value || '').trim();
+    const ctxVal  = (document.getElementById('inp-ctx').value  || '').trim();
+    const fmtVal  = (document.getElementById('inp-fmt').value  || '').trim();
+    const text = goalVal
+      + (ctxVal ? '\n\nContext: ' + ctxVal : '')
+      + (fmtVal ? '\n\nOutput format: ' + fmtVal : '');
+    if (text) {
+      const btn = document.getElementById('check-btn');
+      const origText = btn.innerHTML;
+      btn.innerHTML = '⟳ Reading your request…';
+      btn.disabled = true;
+      originalPromptText = text;
+      try {
+        const res = await fetch('/.netlify/functions/claude-understand', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({text})
+        });
+        const data = await res.json();
+        if (!data.error) {
+          Object.assign(CASES.merge, data);
+          delete CASES.merge.interpretationBullets;
+        }
+      } catch(e) {
+        CASES.merge.interpretation = goalVal;
+        CASES.merge.questions = [];
+        CASES.merge.assumptions = [];
+        delete CASES.merge.interpretationBullets;
+      }
+      btn.innerHTML = origText;
+      btn.disabled = false;
+    }
   }
   goStep(2);
 }
@@ -1388,12 +1427,22 @@ async function doReviewAgain() {
     }
   });
 
-  const hasNewContext = (extra.trim() || cardClarifications.length > 0) && originalPromptText;
+  // Build answered-questions summary for the re-parse
+  const answeredSummary = [];
+  document.querySelectorAll('.qcard').forEach(card => {
+    if (card.classList.contains('skipped')) return;
+    const q = card.querySelector('.qcard-q');
+    const sel = card.querySelector('.q-opt.sel');
+    if (q && sel) answeredSummary.push(q.textContent.trim() + ': ' + sel.textContent.trim());
+  });
+
+  const hasNewContext = (extra.trim() || cardClarifications.length > 0 || answeredSummary.length > 0) && originalPromptText;
   if (hasNewContext) {
     const origLabel = rvBtn ? rvBtn.innerHTML : '';
     if (rvBtn) { rvBtn.innerHTML = '⟳ Re-reading…'; rvBtn.disabled = true; }
     try {
       const combined = originalPromptText
+        + (answeredSummary.length ? '\n\nUser has already answered these questions: ' + answeredSummary.join('; ') : '')
         + (extra.trim() ? '\n\nExtra context from user: ' + extra.trim() : '')
         + (cardClarifications.length ? '\n\nUser clarifications: ' + cardClarifications.join('; ') : '');
       const res = await fetch('/.netlify/functions/claude-understand', {
@@ -1404,28 +1453,52 @@ async function doReviewAgain() {
       if (!data.error) {
         const sm = {low:{stakesLabel:'&#9998; Quick draft',stakesClass:'tag-low'},med:{stakesLabel:'&#9650; Medium',stakesClass:'tag-medium'},high:{stakesLabel:'&#9888; Must be right',stakesClass:'tag-high'}};
         if (sm[data.stakes]) { data.stakesLabel = sm[data.stakes].stakesLabel; data.stakesClass = sm[data.stakes].stakesClass; }
-        // Only absorb interpretation/context fields — do NOT replace assumptions or questions
-        // This preserves all user answers and skipped state across re-parses
+        // Update all context fields
         const safeFields = ['goal', 'ctx', 'fmt', 'role', 'con', 'stakes', 'interpretation', 'stakesLabel', 'stakesClass'];
         safeFields.forEach(k => { if (data[k] !== undefined) CASES.merge[k] = data[k]; });
-        // Preserve original bullets and append the extra detail as a new bullet
-        const origBullets = CASES.merge.interpretationBullets || (CASES.merge.interpretation || '').split(/(?<=[.!?])\s+/).filter(s => s.trim());
+        // Update assumptions from re-parse (fresh read of all context)
+        if (Array.isArray(data.assumptions)) CASES.merge.assumptions = data.assumptions;
+        // Update questions from re-parse, preserving answers for questions that still exist
+        if (Array.isArray(data.questions)) {
+          const oldAnswers        = CASES.merge.cardAnswers        || {};
+          const oldSkipped        = CASES.merge.cardSkipped        || new Set();
+          const oldClarifications = CASES.merge.cardClarifications || {};
+          CASES.merge.questions = data.questions;
+          const newAnswers = {}, newSkipped = new Set(), newClarifications = {};
+          data.questions.forEach(q => {
+            if (oldAnswers[q.id])         newAnswers[q.id]        = oldAnswers[q.id];
+            if (oldSkipped.has(q.id))     newSkipped.add(q.id);
+            if (oldClarifications[q.id])  newClarifications[q.id] = oldClarifications[q.id];
+          });
+          CASES.merge.cardAnswers        = newAnswers;
+          CASES.merge.cardSkipped        = newSkipped;
+          CASES.merge.cardClarifications = newClarifications;
+        }
+        // Use fresh interpretation from re-parse; append any extra context not already captured
+        const freshBullets = (data.interpretation || '').split(/(?<=[.!?])\s+/).filter(s => s.trim());
         const allExtra = [
           extra.trim(),
           ...cardClarifications.map(c => c.split(': ').slice(1).join(': '))
         ].filter(Boolean);
-        const newBullets = [...origBullets];
         allExtra.forEach(txt => {
-          if (!newBullets.some(b => b.toLowerCase().includes(txt.toLowerCase().slice(0, 20)))) {
+          if (txt && !freshBullets.some(b => b.toLowerCase().includes(txt.toLowerCase().slice(0, 20)))) {
             let bullet = txt.charAt(0).toUpperCase() + txt.slice(1);
             if (!/[.!?]$/.test(bullet)) bullet += '.';
-            newBullets.push(bullet);
+            freshBullets.push(bullet);
           }
         });
-        CASES.merge.interpretationBullets = newBullets;
+        CASES.merge.interpretationBullets = freshBullets;
         // Store extra context so doGenerate() can include it in the API call
         if (extra.trim()) CASES.merge.extraContext = extra.trim();
         renderClarify();
+        // If re-parse resolved all gaps, show confirmed state
+        const noCards = !CASES.merge.questions.length && !CASES.merge.assumptions.length;
+        if (noCards) {
+          const titleEl = document.getElementById('clarify-title');
+          const subEl   = document.getElementById('clarify-sub');
+          if (titleEl) titleEl.textContent = 'All confirmed — ready to go';
+          if (subEl)   subEl.textContent   = 'Claude has everything it needs. Review the summary above, then click Run Next.';
+        }
       }
     } catch(e) { console.warn('Re-parse failed:', e.message); }
     if (rvBtn) { rvBtn.disabled = false; rvBtn.innerHTML = origLabel; }
@@ -1686,12 +1759,15 @@ function renderOutput() {
       });
     }
   } else {
-    // Generic / document / prototype rendering — original uniform boxes
-    c.outputs.forEach((out, idx) => {
-      const secId = 'os'+(idx+1);
+    // Generic / document / prototype rendering — separate validation (bd) sections at the bottom
+    const nonBdOuts = c.outputs.filter(o => o.badge !== 'bd');
+    const bdOuts    = c.outputs.filter(o => o.badge === 'bd');
+
+    const renderOutSec = (out, idx) => {
+      const secId  = 'os'+(idx+1);
       const actsId = 'acts'+(idx+1);
-      const rId = 'r'+(idx+1);
-      html += `<div class="out-sec" id="${secId}">
+      const rId    = 'r'+(idx+1);
+      return `<div class="out-sec" id="${secId}" ${out.badge==='bd'?'style="border-color:var(--dangerB);background:var(--dangerL)"':''}>
         <div class="os-hd">
           <div class="os-title">${out.title}</div>
           <div class="os-acts" id="${actsId}">
@@ -1703,7 +1779,18 @@ function renderOutput() {
         <div class="os-body"><div class="os-txt" id="txt${idx+1}">${out.body||out.txt||''}</div></div>
         <div class="reason-panel" id="${rId}">${c.reasons[out.reasonKey]||''}</div>
       </div>`;
-    });
+    };
+
+    nonBdOuts.forEach(out => { html += renderOutSec(out, c.outputs.indexOf(out)); });
+
+    if (bdOuts.length) {
+      html += `<div style="display:flex;align-items:center;gap:10px;margin:20px 0 10px;padding:12px 16px;background:var(--dangerL);border:1.5px solid var(--dangerB);border-radius:10px;">
+        <span style="font-size:20px">⚠️</span>
+        <div><div style="font-size:13px;font-weight:700;color:var(--danger);margin-bottom:2px">Needs your validation — Claude wasn't 100% sure</div>
+        <div style="font-size:12px;color:var(--tx2)">Review these sections carefully. Edit or correct anything before accepting.</div></div>
+      </div>`;
+      bdOuts.forEach(out => { html += renderOutSec(out, c.outputs.indexOf(out)); });
+    }
   }
 
   // Refine panel
@@ -1787,11 +1874,19 @@ function startGenerate() {
   </div>`;
   doGenerate().then(() => {
     if (CASES.merge._generateError) {
+      const errMsg = CASES.merge._generateError || '';
+      const isTimeout = /502|503|timeout/i.test(errMsg);
+      const isApiKey  = /401|403|api.?key/i.test(errMsg);
+      const hint = isTimeout
+        ? 'The request took too long. Try clicking "Try again" — if it keeps failing, try a shorter description or select a quicker model in Step 1.'
+        : isApiKey
+          ? 'Check that ANTHROPIC_API_KEY is set in your Netlify environment variables.'
+          : 'Something went wrong. Click "Try again" or go back and adjust your request.';
       container.innerHTML = `<div style="max-width:520px;margin:60px auto;text-align:center">
         <div style="font-size:40px;margin-bottom:12px">⚠️</div>
         <div style="font-size:18px;font-weight:700;margin-bottom:8px">Generation failed</div>
-        <div style="font-size:13px;color:var(--tx2);margin-bottom:6px;line-height:1.7">${CASES.merge._generateError}</div>
-        <div style="font-size:12px;color:var(--tx3);margin-bottom:20px">Check that ANTHROPIC_API_KEY is set in your Netlify environment variables, or try again.</div>
+        <div style="font-size:13px;color:var(--tx2);margin-bottom:6px;line-height:1.7">${errMsg}</div>
+        <div style="font-size:12px;color:var(--tx3);margin-bottom:20px">${hint}</div>
         <button class="btn-p" onclick="startGenerate()">Try again →</button>
         <button class="btn-ghost" onclick="goStep(2)" style="margin-left:8px">← Back to Review</button>
       </div>`;

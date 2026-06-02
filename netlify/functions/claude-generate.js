@@ -262,7 +262,7 @@ exports.handler = async (event) => {
   }
 
   const selectedModel = MODEL_MAP[model] || 'claude-sonnet-4-6';
-  const maxTokens = taskType === 'prototype' ? 8192 : 4096;
+  const maxTokens = taskType === 'prototype' ? 5000 : 4096;
 
   const answersText = answers && answers.length > 0
     ? answers.map(a => {
