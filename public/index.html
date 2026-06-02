@@ -850,11 +850,22 @@ async function doGenerate() {
   });
   (CASES.merge.files || []).forEach(f => { if (f && !currentFiles.includes(f)) currentFiles.push(f); });
 
+  // Build answers from persisted state (survives re-renders) with DOM as fallback
   const answers = [];
-  document.querySelectorAll('.qcard:not(.skipped)').forEach(card => {
+  const storedAnswers = CASES.merge.cardAnswers || {};
+  const storedSkipped = CASES.merge.cardSkipped || new Set();
+  const storedClarifications = CASES.merge.cardClarifications || {};
+  document.querySelectorAll('.qcard').forEach(card => {
+    if (storedSkipped.has(card.id)) return;
     const q = card.querySelector('.qcard-q');
-    const sel = card.querySelector('.q-opt.sel');
-    if (q && sel) answers.push({question: q.textContent.trim(), answer: sel.textContent.trim()});
+    const savedAns = storedAnswers[card.id];
+    const domSel = card.querySelector('.q-opt.sel');
+    const answer = savedAns || (domSel && domSel.textContent.trim());
+    if (q && answer) {
+      const entry = { question: q.textContent.trim(), answer };
+      if (storedClarifications[card.id]) entry.clarification = storedClarifications[card.id];
+      answers.push(entry);
+    }
   });
 
   const c = CASES.merge;
@@ -865,7 +876,8 @@ async function doGenerate() {
       body: JSON.stringify({
         goal: c.goal, ctx: c.ctx, fmt: c.fmt, role: c.role, con: c.con,
         stakes: c.stakes, model: model, interpretation: c.interpretation,
-        answers, files: currentFiles, taskType: detectTaskType(c.goal)
+        answers, files: currentFiles, taskType: detectTaskType(c.goal),
+        extraContext: c.extraContext || ''
       })
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -998,10 +1010,46 @@ function togglePhases(btn) {
 }
 
 /* ═══════════════ CLARIFY ═══════════════ */
+function _restoreCardState(card, cardId) {
+  const savedAnswers = CASES.merge.cardAnswers || {};
+  const savedSkipped = CASES.merge.cardSkipped || new Set();
+  const savedClarifications = CASES.merge.cardClarifications || {};
+  if (savedSkipped.has(cardId)) {
+    card.classList.add('skipped');
+    card.dataset.answered = 'true';
+    const skipBtn = card.querySelector('.q-skip-inline');
+    if (skipBtn) skipBtn.textContent = 'Undo skip';
+  } else if (savedAnswers[cardId]) {
+    const savedOpt = savedAnswers[cardId];
+    card.dataset.answered = 'true';
+    card.querySelectorAll('.q-opt').forEach(o => {
+      if (o.textContent.trim() === savedOpt) o.classList.add('sel');
+    });
+    if (/clarify|adjust|other/i.test(savedOpt)) {
+      const savedClar = savedClarifications[cardId] || '';
+      const ta = document.createElement('textarea');
+      ta.className = 'inp clarify-inp';
+      ta.rows = 2;
+      ta.placeholder = 'Type your clarification here…';
+      ta.style.marginTop = '10px';
+      ta.value = savedClar;
+      if (savedClar) card.dataset.clarification = savedClar;
+      ta.oninput = () => {
+        card.dataset.clarification = ta.value;
+        if (!CASES.merge.cardClarifications) CASES.merge.cardClarifications = {};
+        CASES.merge.cardClarifications[cardId] = ta.value;
+      };
+      const optsEl = card.querySelector('.q-opts');
+      if (optsEl) optsEl.insertAdjacentElement('afterend', ta);
+    }
+  }
+}
+
 function renderClarify() {
   chipsEdited = false;
   const edInp = document.getElementById('extra-details');
-  if (edInp) edInp.value = '';
+  // Only clear extra-details when first arriving on Review (not on re-render from doReviewAgain)
+  if (edInp && !CASES.merge.extraContext) edInp.value = '';
   const c = CASES[currentCase];
   const banner = document.getElementById('stakes-banner');
   const skipBar = document.getElementById('skip-top-bar');
@@ -1068,6 +1116,7 @@ function renderClarify() {
       <div class="q-opts">${opts.map(o => `<span class="q-opt" onclick="selAssumption(this,'${qId}')">${o}</span>`).join('')}</div>
     `;
     qArea.appendChild(card);
+    _restoreCardState(card, qId);
   });
 
   // Regular questions
@@ -1092,6 +1141,7 @@ function renderClarify() {
         <div class="q-opts">${q.opts.map(o => `<span class="q-opt" onclick="selQ(this,'${q.id}')">${o}</span>`).join('')}</div>
       `;
       qArea.appendChild(card);
+      _restoreCardState(card, q.id);
     });
   }
 
@@ -1185,7 +1235,8 @@ function selAssumption(el, cardId) {
   el.classList.add('sel');
   const card = document.getElementById(cardId);
   if (card) card.dataset.answered = 'true';
-  // Inject clarification textarea when user selects a "clarify/adjust" option
+  if (!CASES.merge.cardAnswers) CASES.merge.cardAnswers = {};
+  CASES.merge.cardAnswers[cardId] = el.textContent.trim();
   const isClarify = /clarify|adjust/i.test(el.textContent);
   if (card) {
     const existing = card.querySelector('.clarify-inp');
@@ -1196,7 +1247,11 @@ function selAssumption(el, cardId) {
       ta.rows = 2;
       ta.placeholder = 'Type your clarification here…';
       ta.style.marginTop = '10px';
-      ta.oninput = () => { card.dataset.clarification = ta.value; };
+      ta.oninput = () => {
+        card.dataset.clarification = ta.value;
+        if (!CASES.merge.cardClarifications) CASES.merge.cardClarifications = {};
+        CASES.merge.cardClarifications[cardId] = ta.value;
+      };
       card.querySelector('.q-opts').insertAdjacentElement('afterend', ta);
       setTimeout(() => ta.focus(), 50);
     }
@@ -1207,14 +1262,17 @@ function skipAssumption(cardId) {
   const card = document.getElementById(cardId);
   if (!card) return;
   const btn = card.querySelector('.q-skip-inline');
+  if (!CASES.merge.cardSkipped) CASES.merge.cardSkipped = new Set();
   if (card.classList.contains('skipped')) {
     card.classList.remove('skipped');
     delete card.dataset.answered;
     if (btn) btn.textContent = 'Skip this';
+    CASES.merge.cardSkipped.delete(cardId);
   } else {
     card.classList.add('skipped');
     card.dataset.answered = 'true';
     if (btn) btn.textContent = 'Undo skip';
+    CASES.merge.cardSkipped.add(cardId);
   }
   updateRunBtn();
 }
@@ -1344,7 +1402,10 @@ async function doReviewAgain() {
       if (!data.error) {
         const sm = {low:{stakesLabel:'&#9998; Quick draft',stakesClass:'tag-low'},med:{stakesLabel:'&#9650; Medium',stakesClass:'tag-medium'},high:{stakesLabel:'&#9888; Must be right',stakesClass:'tag-high'}};
         if (sm[data.stakes]) { data.stakesLabel = sm[data.stakes].stakesLabel; data.stakesClass = sm[data.stakes].stakesClass; }
-        data.outputs = CASES.merge.outputs; data.reasons = CASES.merge.reasons;
+        // Only absorb interpretation/context fields — do NOT replace assumptions or questions
+        // This preserves all user answers and skipped state across re-parses
+        const safeFields = ['goal', 'ctx', 'fmt', 'role', 'con', 'stakes', 'interpretation', 'stakesLabel', 'stakesClass'];
+        safeFields.forEach(k => { if (data[k] !== undefined) CASES.merge[k] = data[k]; });
         // Preserve original bullets and append the extra detail as a new bullet
         const origBullets = CASES.merge.interpretationBullets || (CASES.merge.interpretation || '').split(/(?<=[.!?])\s+/).filter(s => s.trim());
         const allExtra = [
@@ -1359,8 +1420,9 @@ async function doReviewAgain() {
             newBullets.push(bullet);
           }
         });
-        data.interpretationBullets = newBullets;
-        Object.assign(CASES.merge, data);
+        CASES.merge.interpretationBullets = newBullets;
+        // Store extra context so doGenerate() can include it in the API call
+        if (extra.trim()) CASES.merge.extraContext = extra.trim();
         renderClarify();
       }
     } catch(e) { console.warn('Re-parse failed:', e.message); }
@@ -1468,6 +1530,8 @@ function selQ(el, cardId) {
   el.classList.add('sel');
   const card = document.getElementById(cardId);
   if (card) card.dataset.answered = 'true';
+  if (!CASES.merge.cardAnswers) CASES.merge.cardAnswers = {};
+  CASES.merge.cardAnswers[cardId] = el.textContent.trim();
   const isClarify = /clarify|adjust|other/i.test(el.textContent);
   if (card) {
     const existing = card.querySelector('.clarify-inp');
@@ -1478,7 +1542,11 @@ function selQ(el, cardId) {
       ta.rows = 2;
       ta.placeholder = 'Type your clarification here…';
       ta.style.marginTop = '10px';
-      ta.oninput = () => { card.dataset.clarification = ta.value; };
+      ta.oninput = () => {
+        card.dataset.clarification = ta.value;
+        if (!CASES.merge.cardClarifications) CASES.merge.cardClarifications = {};
+        CASES.merge.cardClarifications[cardId] = ta.value;
+      };
       card.querySelector('.q-opts').insertAdjacentElement('afterend', ta);
       setTimeout(() => ta.focus(), 50);
     }
@@ -1487,14 +1555,17 @@ function selQ(el, cardId) {
 }
 function skipQ(cardId, btn) {
   const card = document.getElementById(cardId);
+  if (!CASES.merge.cardSkipped) CASES.merge.cardSkipped = new Set();
   if (card.classList.contains('skipped')) {
     card.classList.remove('skipped');
     delete card.dataset.answered;
     btn.textContent = 'Skip this';
+    CASES.merge.cardSkipped.delete(cardId);
   } else {
     card.classList.add('skipped');
     card.dataset.answered = 'true';
     btn.textContent = 'Undo skip';
+    CASES.merge.cardSkipped.add(cardId);
     if (document.querySelectorAll('.qcard.skipped').length >= 1) document.getElementById('skip-warn').style.display='block';
   }
   updateRunBtn();
@@ -1679,7 +1750,14 @@ function updateStepBar(name) {
   }
 }
 function goStep(step) {
-  if(step===1) showScreen('builder');
+  if(step===1) {
+    // Reset per-session card state so a fresh review starts clean
+    CASES.merge.cardAnswers = {};
+    CASES.merge.cardSkipped = new Set();
+    CASES.merge.cardClarifications = {};
+    CASES.merge.extraContext = '';
+    showScreen('builder');
+  }
   else if(step===2) showScreen('clarify');
   else if(step===3) startGenerate();
 }

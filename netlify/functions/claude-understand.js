@@ -23,12 +23,17 @@ Stakes guidance:
 - "high": legal, financial, medical, career-critical, content shared externally
 
 Questions guidance:
-- 0 questions for low stakes (just get started)
-- 1–2 questions for medium stakes (only what genuinely affects quality)
-- 2–3 questions for high stakes (anything that could cause a material mistake)
-- Each question must have exactly 3 short options
+- Ask ONLY about genuine information gaps that would materially change the output
+- DO ask about meaningful preferences when the choice significantly affects direction (e.g., tone, audience, scope)
+- Do NOT ask about things stated or clearly implied in the user's text — infer them and note as assumptions
+- If the input includes extra context or clarifications, re-read carefully: they likely answer many questions; only generate questions that genuinely remain unanswered after reading all context
+- 0 questions for low stakes — just get started
+- 0–3 questions for medium stakes (omit section entirely if nothing is truly ambiguous)
+- 1–5 questions for high stakes (only genuine blockers)
+- Each question must have exactly 3 short options; include "Other — specify below" as one option when the user may need to write something not covered
+- After a re-parse with additional user context, question count should drop significantly unless a major gap remains
 
-Assumptions: list 2–5 things you are assuming. Mark risk:true for assumptions that could cause significant problems if wrong.
+Assumptions: list 2–5 things you are assuming. Mark risk:true for assumptions that could cause significant problems if wrong. Prefer to make an assumption over asking a question when the answer can be reasonably inferred.
 
 IMPORTANT: Return ONLY valid JSON. No markdown code blocks, no explanation, no preamble.`;
 

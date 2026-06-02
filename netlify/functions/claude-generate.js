@@ -159,7 +159,7 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid JSON body' }) };
   }
 
-  const { goal, ctx, fmt, role, con, stakes, model, interpretation, answers, files, taskType: clientTaskType } = body;
+  const { goal, ctx, fmt, role, con, stakes, model, interpretation, answers, files, taskType: clientTaskType, extraContext } = body;
   const taskType = clientTaskType || detectTaskType(goal);
 
   if (!goal) {
@@ -169,8 +169,11 @@ exports.handler = async (event) => {
   const selectedModel = MODEL_MAP[model] || 'claude-sonnet-4-6';
 
   const answersText = answers && answers.length > 0
-    ? '\n\nUser answers to clarifying questions:\n' +
-      answers.map(a => `Q: ${a.question}\nA: ${a.answer}`).join('\n\n')
+    ? answers.map(a => {
+        let line = `• ${a.question} → ${a.answer}`;
+        if (a.clarification) line += ` (user note: ${a.clarification})`;
+        return line;
+      }).join('\n')
     : '';
 
   const filesText = files && files.length > 0
@@ -181,8 +184,9 @@ exports.handler = async (event) => {
     `TASK: ${goal}\n\n` +
     `CONTEXT: ${ctx || 'None provided'}\n\n` +
     `OUTPUT FORMAT: ${fmt || 'Use the most appropriate format for this task'}\n\n` +
-    `CONFIRMED INTERPRETATION: ${interpretation || goal}` +
-    answersText +
+    `BASE INTERPRETATION: ${interpretation || goal}` +
+    (answersText ? `\n\nUSER CONFIRMED / CLARIFIED IN REVIEW:\n${answersText}\n\nINSTRUCTION: The user confirmations above OVERRIDE the base interpretation where they conflict. Incorporate them directly into your output — do not treat them as suggestions.` : '') +
+    (extraContext ? `\n\nADDITIONAL CONTEXT FROM USER: ${extraContext}` : '') +
     filesText;
 
   try {
