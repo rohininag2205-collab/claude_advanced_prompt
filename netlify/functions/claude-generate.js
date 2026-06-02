@@ -1,10 +1,51 @@
 const Anthropic = require('@anthropic-ai/sdk');
 
-const MODEL_MAP = {
-  haiku:    'claude-haiku-4-5-20251001',
-  sonnet45: 'claude-sonnet-4-5',
-  sonnet46: 'claude-sonnet-4-6',
-  opus:     'claude-opus-4-8'
+// Haiku for all tasks — fast enough to stay within Netlify's 10s function timeout
+const GENERATION_MODEL = 'claude-haiku-4-5-20251001';
+
+// Forcing structured output via tool use eliminates all JSON parsing errors.
+// The API validates the response against this schema before returning it.
+const OUTPUT_TOOL = {
+  name: 'generate_output',
+  description: 'Return the structured output sections for the user\'s task.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      outputs: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 3,
+        items: {
+          type: 'object',
+          properties: {
+            title:     { type: 'string', description: 'Short section title' },
+            body:      { type: 'string', description: 'Section content as HTML' },
+            badge:     { type: 'string', enum: ['bv', 'br', 'bd'] },
+            badgeText: { type: 'string', description: 'Badge label shown to user' },
+            reasonKey: { type: 'string', description: 'r1, r2, or r3 — matches a key in reasons' }
+          },
+          required: ['title', 'body', 'badge', 'badgeText', 'reasonKey']
+        }
+      },
+      reasons: {
+        type: 'object',
+        description: 'Explanations keyed by r1, r2, r3',
+        additionalProperties: { type: 'string' }
+      },
+      references: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            type: { type: 'string' }
+          },
+          required: ['name', 'type']
+        }
+      }
+    },
+    required: ['outputs', 'reasons', 'references']
+  }
 };
 
 function detectTaskType(goal) {
@@ -20,19 +61,17 @@ function buildFinalPolishPrompt(taskType, role, con) {
     prototype: `You are combining user-validated HTML screens into one final polished prototype.
 The user has reviewed draft screens and the extraContext contains the accepted ones.
 Create a single, complete, navigable HTML prototype that integrates all the accepted screens.
-Return ONE output section titled "Final Prototype" with the complete HTML page as the body (use single quotes for all HTML attributes).
+Return ONE output section titled "Final Prototype" with the complete HTML as the body.
 Badge: "bv". BadgeText: "✓ Final prototype".`,
     document: `You are creating the final polished document from user-validated sections.
-The user has reviewed draft sections and the extraContext contains the accepted ones.
 Combine them into one seamless, well-structured final document — smooth out transitions, remove draft markers.
 Return ONE output section with the complete document as the body.
 Badge: "bv". BadgeText: "✓ Final document".`,
     jobsearch: `You are writing a final career strategy summary from user-validated sections.
-The user has reviewed and accepted specific career recommendations.
-Combine them into a clean, professional career strategy summary — clear headings, action steps, salary guidance.
+Combine them into a clean, professional summary — clear headings, action steps, salary guidance.
 Return 1–2 output sections. Badge: "bv".`,
     generic: `You are creating the final polished result from user-validated sections.
-The user has accepted specific sections. Combine and refine them into a single coherent final output.
+Combine and refine them into a single coherent final output.
 Return 1–2 output sections. Badge: "bv".`
   };
 
@@ -42,189 +81,63 @@ ${con ? `\nHARD CONSTRAINTS (never violate):\n${con}` : ''}
 
 ${instructions[taskType] || instructions.generic}
 
-Return this exact JSON shape:
-{
-  "outputs": [{ "title": "string", "body": "HTML content", "badge": "bv", "badgeText": "✓ Final result", "reasonKey": "r1" }],
-  "reasons": { "r1": "<strong>Final output:</strong> combined from user-validated sections" },
-  "references": []
-}
-
-IMPORTANT: Return ONLY valid JSON. No markdown, no preamble.`;
+Badge values: bv = high confidence, br = review recommended, bd = needs validation.
+Call the generate_output tool with your response.`;
 }
 
 function buildSystemPrompt(stakes, role, con, taskType) {
   const stakesNote = {
     low:  'LOW stakes — be concise. Fewer caveats. Just get it done.',
-    med:  'MEDIUM stakes — balance thoroughness with speed. Flag any genuine uncertainties.',
-    high: 'HIGH stakes — be thorough. Explicitly call out anything uncertain, any guess, any number that needs verification. When in doubt, flag it.'
+    med:  'MEDIUM stakes — balance thoroughness with speed. Flag genuine uncertainties.',
+    high: 'HIGH stakes — be thorough. Call out anything uncertain, any guess, any number needing verification.'
   }[stakes] || '';
 
-  const protoInstructions = taskType === 'prototype' ? `
-TASK TYPE: Prototype / UI Design
+  const taskInstructions = {
+    prototype: `TASK TYPE: Prototype / UI Design
 
-You are producing HTML screens for an interactive prototype. Split the prototype into 2–3 key screens or views.
+Produce 2–3 key screens as separate output sections.
+For each screen:
+- title: short screen name (e.g. Dashboard, Login Screen)
+- body: complete self-contained HTML div with all CSS inline. Use modern styling, realistic placeholder content, unicode icons. No external frameworks.
+- badge: bv for primary screens, br for secondary
+- badgeText: "✓ Screen ready" or "⚠ Review layout"`,
 
-For each output section (one screen):
-- title: short screen name (e.g. Dashboard, Login Screen, Product Detail)
-- body: complete, self-contained HTML snippet for that screen with all inline CSS
-  - Use modern, clean styling with a consistent colour palette across all screens
-  - Include realistic placeholder content (text, unicode icons, buttons)
-  - Do NOT rely on external CSS frameworks — inline everything
-  - The snippet is a single div containing the screen layout (not a full HTML page)
-  - CRITICAL FOR VALID JSON: Use ONLY single quotes for ALL HTML attributes inside the body value.
-    Write style='...' NOT style="...". Write class='foo' NOT class="foo".
-    Double quotes inside a JSON string value will break the JSON.
-- badge: bv for primary screens, br for secondary screens
-- badgeText: Screen ready or Review layout
+    jobsearch: `TASK TYPE: Job/Career Search Analysis
 
-The user will accept individual screens. Accepted screens are combined into one navigable HTML prototype file.
-` : '';
+OUTPUT 1 — "Best-fit roles & sectors" (badge: bv)
+List 3–5 job titles that fit the user's profile. For each: title, why it fits, salary range, target sectors.
+Format: <strong>[Job Title]</strong><br>Why it fits: ...<br>Salary range: ...<br>Target sectors: ...
 
-  const protoShape = taskType === 'prototype' ? `
-Return this exact JSON shape (one entry per screen):
+OUTPUT 2 — "Companies & application strategy" (badge: br)
+Company types/sizes that hire these roles, what to emphasise in applications, gaps to address.
 
-{
-  "outputs": [
-    {
-      "title": "Screen name",
-      "body": "<div style='...'> ...complete HTML for this screen... </div>",
-      "badge": "bv",
-      "badgeText": "✓ Screen ready",
-      "reasonKey": "r1"
-    }
-  ],
-  "reasons": {
-    "r1": "<strong>Design choices:</strong> explain layout decisions for screen 1",
-    "r2": "<strong>Design choices:</strong> explain layout decisions for screen 2"
-  },
-  "references": []
-}
-` : null;
+OUTPUT 3 — "What Claude isn't sure about" (badge: bd) — ONLY if genuine unknowns exist. Omit otherwise.`,
 
-  const jobSearchInstructions = taskType === 'jobsearch' ? `
-TASK TYPE: Job/Career Search Analysis
+    document: `TASK TYPE: Document / Writing
+Produce the document split into 2–3 logical sections. Use HTML formatting in body (strong, br, lists).`,
 
-You are acting as a career strategist doing a structured analysis based on what the user has shared about themselves (background, resume details, goals, constraints). Do NOT search the web or invent live job postings. Instead, provide:
-
-OUTPUT 1 — "Best-fit roles & sectors" (badge: "bv")
-- Based on the user's background and constraints, list the 3–5 job titles/roles that are the strongest match
-- For each role: title, why it fits their profile, typical salary range (mention if constrained by their stated minimum), sectors/industries to target
-- Format each as: <strong>[Job Title]</strong><br>Why it fits: ...<br>Salary range: ...<br>Target sectors: ...
-
-OUTPUT 2 — "Companies & application strategy" (badge: "br")
-- Types/sizes of companies that hire for these roles (not specific company names unless very well-known)
-- What to emphasise in applications given their background
-- Any gaps or areas to address before applying
-- Format as structured bullets
-
-OUTPUT 3 — "What Claude isn't sure about" (badge: "bd") — include ONLY if there are genuine uncertainties
-- Specific things Claude couldn't determine from the information provided (e.g., exact current salary, location preference details, visa status)
-- Questions the user should answer to get better recommendations
-- Omit this section entirely if you have enough context
-
-Use real salary ranges relevant to their location/market if mentioned. If salary constraints were stated (e.g. "minimum 15 LPA"), anchor ALL salary mentions to that constraint.
-` : '';
-
-  const baseShape = protoShape || (taskType === 'jobsearch' ? `
-Return this exact JSON shape:
-
-{
-  "outputs": [
-    {
-      "title": "Best-fit roles & sectors",
-      "body": "HTML content with structured role recommendations",
-      "badge": "bv",
-      "badgeText": "✓ Strong matches from your profile",
-      "reasonKey": "r1"
-    },
-    {
-      "title": "Companies & application strategy",
-      "body": "HTML content with company types and application advice",
-      "badge": "br",
-      "badgeText": "⚠ Strategy — based on inferred market fit",
-      "reasonKey": "r2"
-    }
-  ],
-  "reasons": {
-    "r1": "<strong>Why these roles fit:</strong> explanation based on profile analysis",
-    "r2": "<strong>Application strategy:</strong> reasoning behind recommendations"
-  },
-  "references": []
-}
-
-Add a third output with badge "bd" and reasonKey "r3" ONLY if there are genuine unknowns the user needs to clarify.
-` : `
-Split the result into 2–3 logical sections. Return this exact JSON shape:
-
-{
-  "outputs": [
-    {
-      "title": "Section title",
-      "body": "Content as HTML — use <strong>, <br>, bullet points with •, numbered lists etc. Be thorough.",
-      "badge": "bv",
-      "badgeText": "✓ High confidence",
-      "reasonKey": "r1"
-    }
-  ],
-  "reasons": {
-    "r1": "<strong>Why I'm confident:</strong> explanation of confidence or uncertainty for section 1",
-    "r2": "<strong>Worth checking:</strong> explanation for section 2"
-  },
-  "references": [
-    { "name": "filename or source name", "type": "file" }
-  ]
-}
-`);
+    generic: `Split the result into 2–3 logical sections. Use HTML formatting in body (strong, br, bullet points, numbered lists).`
+  }[taskType] || `Split the result into 2–3 logical sections. Use HTML formatting in body.`;
 
   return `You are Claude completing a task via the Advanced Prompting tool.
-
-Complete the task described by the user and return the result as JSON.
 
 ${stakesNote}
 ${role ? `\nACT AS: ${role}` : ''}
 ${con ? `\nHARD CONSTRAINTS (never violate):\n${con}` : ''}
-${protoInstructions}${jobSearchInstructions}
-${baseShape}
+
+${taskInstructions}
 
 Badge values:
 - "bv" = high confidence (verified, factual, straightforward)
-- "br" = review recommended (style choices made, interpretation involved)
-- "bd" = needs validation (numbers, facts, legal/financial items to check)
+- "br" = review recommended (style choices or interpretation involved)
+- "bd" = needs validation (numbers, facts, legal/financial items)
 
-badgeText examples:
-- bv: "✓ High confidence"
-- br: "⚠ Check — 2 style choices made"
-- bd: "⚠ Validate — figures to verify"
+badgeText examples: "✓ High confidence" / "⚠ Check — style choices made" / "⚠ Validate — figures to verify"
+reasonKey: r1 for first output, r2 for second, r3 for third.
+reasons: one entry per output explaining confidence level.
+references: only include files/sources actually used.
 
-reasonKey must match the output index: r1 for first output, r2 for second, r3 for third.
-references: only include files/sources actually referenced.
-
-IMPORTANT: Return ONLY valid JSON. No markdown code blocks, no preamble, no explanation outside the JSON.`;
-}
-
-function extractJSON(text) {
-  // Strip markdown code blocks if present
-  const match = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const raw = match ? match[1].trim() : (() => {
-    const start = text.indexOf('{');
-    const end = text.lastIndexOf('}');
-    return start >= 0 && end > start ? text.slice(start, end + 1) : text.trim();
-  })();
-
-  // First try direct parse
-  try { return JSON.parse(raw); } catch {}
-
-  // Fallback: replace HTML attribute double quotes with single quotes inside JSON string values
-  // This handles cases where Claude used style="..." instead of style='...' in the body field
-  const sanitized = raw.replace(/"body"\s*:\s*"([\s\S]*?)(?<!\\)"/g, (m, inner) => {
-    const fixed = inner.replace(/(?<!\\)"/g, "'");
-    return `"body": "${fixed}"`;
-  });
-  try { return JSON.parse(sanitized); } catch {}
-
-  // Last resort: strip any literal newlines inside string values
-  const stripped = raw.replace(/(?<=:\s*")([\s\S]*?)(?="[,\n}\]])/g, s => s.replace(/\n/g, '\\n').replace(/\r/g, ''));
-  return JSON.parse(stripped);
+Call the generate_output tool with your complete response.`;
 }
 
 exports.handler = async (event) => {
@@ -254,16 +167,12 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid JSON body' }) };
   }
 
-  const { goal, ctx, fmt, role, con, stakes, model, interpretation, answers, files, taskType: clientTaskType, extraContext, finalPolish } = body;
+  const { goal, ctx, fmt, role, con, stakes, interpretation, answers, files, taskType: clientTaskType, extraContext, finalPolish } = body;
   const taskType = clientTaskType || detectTaskType(goal);
 
   if (!goal) {
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'goal field is required' }) };
   }
-
-  // Use Haiku for all tasks to stay within Netlify's 10s function timeout.
-  const selectedModel = 'claude-haiku-4-5-20251001';
-  const maxTokens = 3000;
 
   const answersText = answers && answers.length > 0
     ? answers.map(a => {
@@ -282,26 +191,25 @@ exports.handler = async (event) => {
     `CONTEXT: ${ctx || 'None provided'}\n\n` +
     `OUTPUT FORMAT: ${fmt || 'Use the most appropriate format for this task'}\n\n` +
     `BASE INTERPRETATION: ${interpretation || goal}` +
-    (answersText ? `\n\nUSER CONFIRMED / CLARIFIED IN REVIEW:\n${answersText}\n\nINSTRUCTION: The user confirmations above OVERRIDE the base interpretation where they conflict. Incorporate them directly into your output — do not treat them as suggestions.` : '') +
+    (answersText ? `\n\nUSER CONFIRMED / CLARIFIED IN REVIEW:\n${answersText}\n\nINSTRUCTION: These confirmations OVERRIDE the base interpretation where they conflict. Incorporate them directly.` : '') +
     (extraContext ? `\n\nADDITIONAL CONTEXT FROM USER: ${extraContext}` : '') +
-    filesText +
-    '\n\nNOTE: Do not ask for more information or files. Generate the best possible result from the context provided above.';
+    filesText;
 
   try {
     const client = new Anthropic({ apiKey });
     const message = await client.messages.create({
-      model: selectedModel,
-      max_tokens: maxTokens,
+      model: GENERATION_MODEL,
+      max_tokens: 3000,
       system: finalPolish ? buildFinalPolishPrompt(taskType, role, con) : buildSystemPrompt(stakes, role, con, taskType),
-      messages: [
-        { role: 'user', content: userMessage }
-      ]
+      tools: [OUTPUT_TOOL],
+      tool_choice: { type: 'tool', name: 'generate_output' },
+      messages: [{ role: 'user', content: userMessage }]
     });
 
-    const raw = message.content[0].text;
-    const parsed = extractJSON(raw);
+    const toolUse = message.content.find(b => b.type === 'tool_use');
+    if (!toolUse) throw new Error('Model did not return structured output');
 
-    // Validate output shape
+    const parsed = toolUse.input;
     if (!parsed.outputs || !Array.isArray(parsed.outputs)) {
       throw new Error('Response missing outputs array');
     }
