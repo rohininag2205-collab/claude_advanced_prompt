@@ -1,10 +1,7 @@
 const Anthropic = require('@anthropic-ai/sdk');
 
-// Haiku for all tasks — fast enough to stay within Netlify's 10s function timeout
 const GENERATION_MODEL = 'claude-haiku-4-5-20251001';
 
-// Forcing structured output via tool use eliminates all JSON parsing errors.
-// The API validates the response against this schema before returning it.
 const OUTPUT_TOOL = {
   name: 'generate_output',
   description: 'Return the structured output sections for the user\'s task.',
@@ -59,7 +56,6 @@ function detectTaskType(goal) {
 function buildFinalPolishPrompt(taskType, role, con) {
   const instructions = {
     prototype: `You are combining user-validated HTML screens into one final polished prototype.
-The user has reviewed draft screens and the extraContext contains the accepted ones.
 Create a single, complete, navigable HTML prototype that integrates all the accepted screens.
 Return ONE output section titled "Final Prototype" with the complete HTML as the body.
 Badge: "bv". BadgeText: "✓ Final prototype".`,
@@ -140,38 +136,28 @@ references: only include files/sources actually used.
 Call the generate_output tool with your complete response.`;
 }
 
-exports.handler = async (event) => {
-  const headers = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
+module.exports = async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (event.httpMethod === 'OPTIONS') {
-    return { statusCode: 200, headers, body: '' };
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
   }
 
-  if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method not allowed' }) };
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    return {
-      statusCode: 503,
-      headers,
-      body: JSON.stringify({ error: 'API key not configured — add ANTHROPIC_API_KEY to Netlify environment variables' })
-    };
+    return res.status(503).json({ error: 'API key not configured — add ANTHROPIC_API_KEY to Vercel environment variables' });
   }
 
-  let body;
-  try {
-    body = JSON.parse(event.body || '{}');
-  } catch {
-    return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid JSON body' }) };
-  }
-
-  const { goal, ctx, fmt, role, con, stakes, interpretation, answers, files, taskType: clientTaskType, extraContext, finalPolish } = body;
+  const { goal, ctx, fmt, role, con, stakes, interpretation, answers, files, taskType: clientTaskType, extraContext, finalPolish } = req.body || {};
   const taskType = clientTaskType || detectTaskType(goal);
 
   if (!goal) {
-    return { statusCode: 400, headers, body: JSON.stringify({ error: 'goal field is required' }) };
+    return res.status(400).json({ error: 'goal field is required' });
   }
 
   const answersText = answers && answers.length > 0
@@ -214,13 +200,9 @@ exports.handler = async (event) => {
       throw new Error('Response missing outputs array');
     }
 
-    return { statusCode: 200, headers, body: JSON.stringify(parsed) };
+    return res.status(200).json(parsed);
   } catch (e) {
     console.error('claude-generate error:', e.message);
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: `Generation failed: ${e.message}` })
-    };
+    return res.status(500).json({ error: `Generation failed: ${e.message}` });
   }
 };

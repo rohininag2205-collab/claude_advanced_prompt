@@ -785,7 +785,7 @@ function fillParsed(c) {
 /* ═══════════════ API: PARSE (Screen 1 → 2) ═══════════════ */
 async function doUnderstand() {
   try {
-    const res = await fetch('/.netlify/functions/claude-understand', {
+    const res = await fetch('/api/claude-understand', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({text: originalPromptText})
@@ -871,7 +871,7 @@ async function doGenerate() {
 
   const c = CASES.merge;
   try {
-    const res = await fetch('/.netlify/functions/claude-generate', {
+    const res = await fetch('/api/claude-generate', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
@@ -1339,7 +1339,7 @@ async function checkDescribeAndProceed() {
       btn.disabled = true;
       originalPromptText = text;
       try {
-        const res = await fetch('/.netlify/functions/claude-understand', {
+        const res = await fetch('/api/claude-understand', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({text})
         });
@@ -1447,7 +1447,7 @@ async function doReviewAgain() {
         + (answeredSummary.length ? '\n\nUser has already answered these questions: ' + answeredSummary.join('; ') : '')
         + (extra.trim() ? '\n\nExtra context from user: ' + extra.trim() : '')
         + (cardClarifications.length ? '\n\nUser clarifications: ' + cardClarifications.join('; ') : '');
-      const res = await fetch('/.netlify/functions/claude-understand', {
+      const res = await fetch('/api/claude-understand', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({text: combined})
       });
@@ -2354,7 +2354,7 @@ async function doFinalPolish() {
       `### ${s.title}\n${(s.body || s.txt || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()}`
     ).join('\n\n');
 
-    const res = await fetch('/.netlify/functions/claude-generate', {
+    const res = await fetch('/api/claude-generate', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
