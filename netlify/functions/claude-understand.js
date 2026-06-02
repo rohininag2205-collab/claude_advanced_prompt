@@ -12,7 +12,7 @@ Parse it and return a JSON object with ONLY these fields:
   "role": "expert role or persona to adopt (empty string if not specified)",
   "con": "hard constraints or things Claude must NOT do (empty string if none mentioned)",
   "stakes": "low" | "med" | "high",
-  "interpretation": "2–3 sentence plain-language summary of exactly what you will do, starting with a verb",
+  "interpretation": "2–4 short statements of exactly what you will do. Write each as a SEPARATE sentence ending with a period. Each sentence must start with a verb and be 20 words or fewer.",
   "assumptions": [{"text": "assumption text", "risk": false}],
   "questions": [{"id": "q1", "label": "Key question", "q": "question text", "why": "brief reason this matters", "opts": ["option 1", "option 2", "option 3"]}]
 }
