@@ -809,9 +809,9 @@ async function doUnderstand() {
       high:{stakesLabel:'&#9888; Must be right',stakesClass:'tag-high'}
     };
     if (sm[data.stakes]) { data.stakesLabel = sm[data.stakes].stakesLabel; data.stakesClass = sm[data.stakes].stakesClass; }
-    // Keep demo outputs as fallback for generate step
-    data.outputs = data.outputs || CASES.merge.outputs;
-    data.reasons = data.reasons || CASES.merge.reasons;
+    // Do NOT copy demo outputs — generate step fills these with real content
+    data.outputs = [];
+    data.reasons = {};
     Object.assign(CASES.merge, data);
     fillParsed(data);
   } catch(e) {
@@ -834,6 +834,7 @@ async function doUnderstand() {
 
 /* ═══════════════ API: GENERATE (Screen 3 → 4) ═══════════════ */
 async function doGenerate() {
+  CASES.merge._generateError = null;
   // Capture rules and files for right panel
   currentRules = {
     role: (document.getElementById('inp-role') || {}).value || '',
@@ -892,7 +893,8 @@ async function doGenerate() {
       }
     }
   } catch(e) {
-    console.warn('Generate API unavailable, using demo data:', e.message);
+    console.error('Generate API error:', e.message);
+    CASES.merge._generateError = e.message || 'Unknown error';
   }
 }
 
@@ -1784,6 +1786,27 @@ function startGenerate() {
     </div>
   </div>`;
   doGenerate().then(() => {
+    if (CASES.merge._generateError) {
+      container.innerHTML = `<div style="max-width:520px;margin:60px auto;text-align:center">
+        <div style="font-size:40px;margin-bottom:12px">⚠️</div>
+        <div style="font-size:18px;font-weight:700;margin-bottom:8px">Generation failed</div>
+        <div style="font-size:13px;color:var(--tx2);margin-bottom:6px;line-height:1.7">${CASES.merge._generateError}</div>
+        <div style="font-size:12px;color:var(--tx3);margin-bottom:20px">Check that ANTHROPIC_API_KEY is set in your Netlify environment variables, or try again.</div>
+        <button class="btn-p" onclick="startGenerate()">Try again →</button>
+        <button class="btn-ghost" onclick="goStep(2)" style="margin-left:8px">← Back to Review</button>
+      </div>`;
+      return;
+    }
+    if (!CASES.merge.outputs || !CASES.merge.outputs.length) {
+      container.innerHTML = `<div style="max-width:520px;margin:60px auto;text-align:center">
+        <div style="font-size:40px;margin-bottom:12px">🤔</div>
+        <div style="font-size:18px;font-weight:700;margin-bottom:8px">No output was generated</div>
+        <div style="font-size:13px;color:var(--tx2);margin-bottom:20px;line-height:1.7">Claude returned an empty response. This can happen if the request was too complex or the model timed out.</div>
+        <button class="btn-p" onclick="startGenerate()">Try again →</button>
+        <button class="btn-ghost" onclick="goStep(2)" style="margin-left:8px">← Back to Review</button>
+      </div>`;
+      return;
+    }
     renderOutput();
     setTimeout(renderThinkingFlow, 100);
     setTimeout(renderOutputRightPanel, 120);

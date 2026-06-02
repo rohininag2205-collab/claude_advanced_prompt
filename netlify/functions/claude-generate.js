@@ -28,16 +28,19 @@ TASK TYPE: Prototype / UI Design
 You are producing HTML screens for an interactive prototype. Split the prototype into 2–3 key screens or views.
 
 For each output section (one screen):
-- title: short screen name (e.g. "Dashboard", "Login Screen", "Product Detail")
-- body: complete, self-contained HTML snippet for that screen — include all inline CSS needed
-  - Use modern, clean styling. Consistent colour palette across all screens.
-  - Include realistic placeholder content (text, icons using unicode or simple SVG, buttons)
-  - Do NOT rely on external CSS frameworks. Inline everything.
-  - The snippet should be a single <div> containing the screen layout (not a full HTML page)
-- badge: "bv" for primary screens, "br" for secondary screens
-- badgeText: "✓ Screen ready" or "⚠ Review layout"
+- title: short screen name (e.g. Dashboard, Login Screen, Product Detail)
+- body: complete, self-contained HTML snippet for that screen with all inline CSS
+  - Use modern, clean styling with a consistent colour palette across all screens
+  - Include realistic placeholder content (text, unicode icons, buttons)
+  - Do NOT rely on external CSS frameworks — inline everything
+  - The snippet is a single div containing the screen layout (not a full HTML page)
+  - CRITICAL FOR VALID JSON: Use ONLY single quotes for ALL HTML attributes inside the body value.
+    Write style='...' NOT style="...". Write class='foo' NOT class="foo".
+    Double quotes inside a JSON string value will break the JSON.
+- badge: bv for primary screens, br for secondary screens
+- badgeText: Screen ready or Review layout
 
-The user will accept individual screens. Accepted screens will be combined into one navigable HTML prototype file.
+The user will accept individual screens. Accepted screens are combined into one navigable HTML prototype file.
 ` : '';
 
   const protoShape = taskType === 'prototype' ? `
@@ -163,12 +166,28 @@ IMPORTANT: Return ONLY valid JSON. No markdown code blocks, no preamble, no expl
 }
 
 function extractJSON(text) {
+  // Strip markdown code blocks if present
   const match = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (match) return JSON.parse(match[1].trim());
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start >= 0 && end > start) return JSON.parse(text.slice(start, end + 1));
-  return JSON.parse(text.trim());
+  const raw = match ? match[1].trim() : (() => {
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    return start >= 0 && end > start ? text.slice(start, end + 1) : text.trim();
+  })();
+
+  // First try direct parse
+  try { return JSON.parse(raw); } catch {}
+
+  // Fallback: replace HTML attribute double quotes with single quotes inside JSON string values
+  // This handles cases where Claude used style="..." instead of style='...' in the body field
+  const sanitized = raw.replace(/"body"\s*:\s*"([\s\S]*?)(?<!\\)"/g, (m, inner) => {
+    const fixed = inner.replace(/(?<!\\)"/g, "'");
+    return `"body": "${fixed}"`;
+  });
+  try { return JSON.parse(sanitized); } catch {}
+
+  // Last resort: strip any literal newlines inside string values
+  const stripped = raw.replace(/(?<=:\s*")([\s\S]*?)(?="[,\n}\]])/g, s => s.replace(/\n/g, '\\n').replace(/\r/g, ''));
+  return JSON.parse(stripped);
 }
 
 exports.handler = async (event) => {
@@ -206,6 +225,7 @@ exports.handler = async (event) => {
   }
 
   const selectedModel = MODEL_MAP[model] || 'claude-sonnet-4-6';
+  const maxTokens = taskType === 'prototype' ? 8192 : 4096;
 
   const answersText = answers && answers.length > 0
     ? answers.map(a => {
@@ -232,7 +252,7 @@ exports.handler = async (event) => {
     const client = new Anthropic({ apiKey });
     const message = await client.messages.create({
       model: selectedModel,
-      max_tokens: 4096,
+      max_tokens: maxTokens,
       system: buildSystemPrompt(stakes, role, con, taskType),
       messages: [{ role: 'user', content: userMessage }]
     });
