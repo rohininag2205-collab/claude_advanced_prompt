@@ -1613,11 +1613,19 @@ function renderOutput() {
 
   // Screen-by-screen nav for prototype mode
   if (c.screenByScreen || taskType === 'prototype') {
-    html += `<div style="background:var(--blueL);border:1.5px solid var(--blueB);border-radius:10px;padding:12px 16px;margin-bottom:14px;">
-      <div style="font-size:13px;font-weight:700;color:var(--blue);margin-bottom:6px;">&#128196; This task has ${c.outputs.length} screens — review each one</div>
-      <div style="font-size:12px;color:var(--tx2);margin-bottom:10px;">Accept each screen individually. Once all screens are accepted, Claude combines them into one working prototype file.</div>
-      <div class="screen-nav">
-        ${c.outputs.map((o,i) => `<button class="screen-nav-btn${i===0?' active':''}" onclick="scrollToScreen('os${i+1}',this)">${o.title}</button>`).join('')}
+    html += `<div style="background:var(--blueL);border:1.5px solid var(--blueB);border-radius:12px;padding:14px 16px;margin-bottom:16px;">
+      <div style="font-size:13px;font-weight:700;color:var(--blue);margin-bottom:8px;">How to finalise your prototype</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin-bottom:10px;">
+        <div style="font-size:12px;color:var(--tx2)"><span style="font-weight:700;color:var(--blue)">1.</span> Review each screen below</div>
+        <div style="font-size:12px;color:var(--tx2)"><span style="font-weight:700;color:var(--blue)">2.</span> Click <strong>Accept 🔒</strong> on screens you're happy with</div>
+        <div style="font-size:12px;color:var(--tx2)"><span style="font-weight:700;color:var(--blue)">3.</span> Click <strong>✏ Edit</strong> to revise any screen</div>
+        <div style="font-size:12px;color:var(--tx2)"><span style="font-weight:700;color:var(--blue)">4.</span> Click <strong>Done</strong> — accepted screens become one HTML file</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div class="screen-nav" style="flex:1;margin-bottom:0;padding:0;border:none;">
+          ${c.outputs.map((o,i) => `<button class="screen-nav-btn${i===0?' active':''}" onclick="scrollToScreen('os${i+1}',this)">${o.title}</button>`).join('')}
+        </div>
+        <div id="proto-accept-count" style="font-size:12px;font-weight:700;color:var(--blue);white-space:nowrap;flex-shrink:0;">0 of ${c.outputs.length} accepted</div>
       </div>
     </div>`;
   }
@@ -1646,7 +1654,7 @@ function renderOutput() {
               <button class="btn-lock" onclick="lockSec('${secId}','${actsId}')">Accept &#128274;</button>
             </div>
           </div>
-          <div class="os-body"><div class="os-txt" id="txt${globalIdx+1}">${out.txt}</div></div>
+          <div class="os-body"><div class="os-txt" id="txt${globalIdx+1}">${out.body||out.txt||''}</div></div>
           <div class="reason-panel" id="${rId}">${c.reasons[out.reasonKey]||''}</div>
         </div>`;
       });
@@ -1670,7 +1678,7 @@ function renderOutput() {
               <button class="btn-edit" onclick="startEdit('${secId}','${actsId}','${rId}')">✏ Correct this</button>
             </div>
           </div>
-          <div class="os-body"><div class="os-txt" id="txt${globalIdx+1}">${out.txt}</div></div>
+          <div class="os-body"><div class="os-txt" id="txt${globalIdx+1}">${out.body||out.txt||''}</div></div>
           <div class="reason-panel" id="${rId}">${c.reasons[out.reasonKey]||''}</div>
         </div>`;
       });
@@ -1690,7 +1698,7 @@ function renderOutput() {
             <button class="btn-lock" onclick="lockSec('${secId}','${actsId}')">Accept &#128274;</button>
           </div>
         </div>
-        <div class="os-body"><div class="os-txt" id="txt${idx+1}">${out.txt}</div></div>
+        <div class="os-body"><div class="os-txt" id="txt${idx+1}">${out.body||out.txt||''}</div></div>
         <div class="reason-panel" id="${rId}">${c.reasons[out.reasonKey]||''}</div>
       </div>`;
     });
@@ -1877,17 +1885,28 @@ function scrollToScreen(secId, btn) {
 
 function updateScreenNav() {
   const c = CASES[currentCase];
-  if (!c.screenByScreen) return;
+  const taskType = detectTaskType(c.goal);
+  const isProto = c.screenByScreen || taskType === 'prototype';
+  if (!isProto) return;
   const btns = document.querySelectorAll('.screen-nav-btn');
   c.outputs.forEach((out, idx) => {
     const secId = 'os'+(idx+1);
     if (btns[idx] && locked.has(secId)) {
       btns[idx].classList.add('done');
       btns[idx].innerHTML = '&#10003; ' + out.title;
+    } else if (btns[idx]) {
+      btns[idx].classList.remove('done');
+      btns[idx].innerHTML = out.title;
     }
   });
+  // Update the accept counter
+  const counter = document.getElementById('proto-accept-count');
+  if (counter) {
+    counter.textContent = `${locked.size} of ${c.outputs.length} accepted`;
+    counter.style.color = locked.size === c.outputs.length ? 'var(--ok)' : 'var(--blue)';
+  }
   // Check if all screens accepted
-  if (locked.size === c.outputs.length && c.screenByScreen) {
+  if (locked.size === c.outputs.length && isProto) {
     const container = document.getElementById('output-content');
     const existing = container.querySelector('.combine-banner');
     if (!existing) {
@@ -2056,49 +2075,89 @@ function showExport() {
   doExport();
 }
 
+function buildPrototypeHTML(sections) {
+  const tabs = sections.map((s, i) =>
+    `<button class="tab${i===0?' active':''}" onclick="showTab(${i},this)">${s.title}</button>`
+  ).join('');
+  const screens = sections.map((s, i) =>
+    `<div class="screen" id="screen-${i}" style="display:${i===0?'block':'none'}">${s.body || s.txt || ''}</div>`
+  ).join('');
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Prototype</title>
+<style>
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f5;}
+  .nav{position:sticky;top:0;background:#fff;border-bottom:1px solid #e5e7eb;padding:10px 16px;display:flex;gap:8px;flex-wrap:wrap;z-index:100;}
+  .tab{padding:7px 16px;border-radius:20px;border:1.5px solid #e5e7eb;background:#f9fafb;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit;transition:all .15s;}
+  .tab.active{background:#1d4ed8;color:#fff;border-color:#1d4ed8;}
+  .screen{padding:20px;max-width:900px;margin:0 auto;}
+</style>
+</head>
+<body>
+<div class="nav">${tabs}</div>
+${screens}
+<script>function showTab(i,btn){document.querySelectorAll('.screen').forEach((s,j)=>s.style.display=j===i?'block':'none');document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));btn.classList.add('active');}<\/script>
+</body></html>`;
+}
+
 function doExport() {
   const c = CASES[currentCase];
   const container = document.getElementById('output-content');
+  const taskType = detectTaskType(c.goal);
 
-  // Determine export options based on case
+  // Export options are task-type aware (not hardcoded to demo case names)
   let exportOpts = '';
-  if (currentCase === 'merge') {
+  if (taskType === 'prototype') {
     exportOpts = `
-      <div class="export-opt selected" onclick="selectExport(this)"><div class="export-opt-icon">📄</div><div class="export-opt-label">PDF</div><div class="export-opt-desc">Ready to send</div></div>
-      <div class="export-opt" onclick="selectExport(this)"><div class="export-opt-icon">📝</div><div class="export-opt-label">Word (.docx)</div><div class="export-opt-desc">Editable document</div></div>
-      <div class="export-opt" onclick="selectExport(this)"><div class="export-opt-icon">📋</div><div class="export-opt-label">Copy text</div><div class="export-opt-desc">Paste anywhere</div></div>
+      <div class="export-opt selected" data-format="html" onclick="selectExport(this)"><div class="export-opt-icon">🌐</div><div class="export-opt-label">HTML file</div><div class="export-opt-desc">Open in browser</div></div>
+      <div class="export-opt" data-format="code" onclick="selectExport(this)"><div class="export-opt-icon">📋</div><div class="export-opt-label">Copy code</div><div class="export-opt-desc">Paste into editor</div></div>
+      <div class="export-opt" data-format="pdf" onclick="selectExport(this)"><div class="export-opt-icon">📄</div><div class="export-opt-label">Write-up PDF</div><div class="export-opt-desc">Document describing the prototype</div></div>
     `;
-  } else if (currentCase === 'proto') {
+  } else if (taskType === 'document') {
     exportOpts = `
-      <div class="export-opt selected" onclick="selectExport(this)"><div class="export-opt-icon">🌐</div><div class="export-opt-label">HTML file</div><div class="export-opt-desc">Open in browser</div></div>
-      <div class="export-opt" onclick="selectExport(this)"><div class="export-opt-icon">📱</div><div class="export-opt-label">Preview link</div><div class="export-opt-desc">Share with team</div></div>
-      <div class="export-opt" onclick="selectExport(this)"><div class="export-opt-icon">📋</div><div class="export-opt-label">Copy code</div><div class="export-opt-desc">Paste into editor</div></div>
+      <div class="export-opt selected" data-format="pdf" onclick="selectExport(this)"><div class="export-opt-icon">📄</div><div class="export-opt-label">PDF</div><div class="export-opt-desc">Ready to send</div></div>
+      <div class="export-opt" data-format="docx" onclick="selectExport(this)"><div class="export-opt-icon">📝</div><div class="export-opt-label">Word (.docx)</div><div class="export-opt-desc">Editable document</div></div>
+      <div class="export-opt" data-format="text" onclick="selectExport(this)"><div class="export-opt-icon">📋</div><div class="export-opt-label">Copy text</div><div class="export-opt-desc">Paste anywhere</div></div>
+    `;
+  } else if (taskType === 'jobsearch') {
+    exportOpts = `
+      <div class="export-opt selected" data-format="pdf" onclick="selectExport(this)"><div class="export-opt-icon">📄</div><div class="export-opt-label">PDF summary</div><div class="export-opt-desc">Print-ready</div></div>
+      <div class="export-opt" data-format="text" onclick="selectExport(this)"><div class="export-opt-icon">📋</div><div class="export-opt-label">Copy text</div><div class="export-opt-desc">Paste into email or notes</div></div>
+      <div class="export-opt" data-format="sheet" onclick="selectExport(this)"><div class="export-opt-icon">📊</div><div class="export-opt-label">Spreadsheet</div><div class="export-opt-desc">Roles as rows</div></div>
     `;
   } else {
     exportOpts = `
-      <div class="export-opt selected" onclick="selectExport(this)"><div class="export-opt-icon">📄</div><div class="export-opt-label">PDF report</div><div class="export-opt-desc">Formal document</div></div>
-      <div class="export-opt" onclick="selectExport(this)"><div class="export-opt-icon">📊</div><div class="export-opt-label">Excel (.xlsx)</div><div class="export-opt-desc">Findings as spreadsheet</div></div>
-      <div class="export-opt" onclick="selectExport(this)"><div class="export-opt-icon">📋</div><div class="export-opt-label">Copy text</div><div class="export-opt-desc">Paste into email</div></div>
+      <div class="export-opt selected" data-format="pdf" onclick="selectExport(this)"><div class="export-opt-icon">📄</div><div class="export-opt-label">PDF report</div><div class="export-opt-desc">Formal document</div></div>
+      <div class="export-opt" data-format="docx" onclick="selectExport(this)"><div class="export-opt-icon">📝</div><div class="export-opt-label">Word (.docx)</div><div class="export-opt-desc">Editable</div></div>
+      <div class="export-opt" data-format="text" onclick="selectExport(this)"><div class="export-opt-icon">📋</div><div class="export-opt-label">Copy text</div><div class="export-opt-desc">Paste anywhere</div></div>
     `;
   }
 
-  // Build export panel
+  const isProto = taskType === 'prototype';
+  const acceptedOutputs = c.outputs.filter((_, i) => locked.has('os'+(i+1)));
+  const includedOutputs = acceptedOutputs.length > 0 ? acceptedOutputs : c.outputs;
+  const readyTitle = isProto
+    ? `Your prototype is ready — ${includedOutputs.length} screen${includedOutputs.length!==1?'s':''} combined`
+    : 'Your result is ready';
+
   const exportHTML = `<div class="export-panel">
     <div class="export-hd">
       <div class="export-hd-icon">&#10003;</div>
-      <div style="flex:1"><strong style="font-size:15px;display:block;margin-bottom:2px;">Your result is ready</strong>
-      <span style="font-size:12px;color:var(--tx2);">All sections reviewed. Choose how to save or share.</span></div>
+      <div style="flex:1"><strong style="font-size:15px;display:block;margin-bottom:2px;">${readyTitle}</strong>
+      <span style="font-size:12px;color:var(--tx2);">${isProto ? 'Accepted screens will be combined into one HTML file.' : 'All sections reviewed. Choose how to save or share.'}</span></div>
     </div>
     <div class="export-body">
       <div style="font-size:13px;font-weight:600;margin-bottom:4px;">What was included:</div>
       <div style="font-size:12.5px;color:var(--tx2);margin-bottom:12px;line-height:1.7;">
-        ${c.outputs.map(o => '&#10003; ' + o.title).join('<br>')}
+        ${includedOutputs.map(o => '&#10003; ' + o.title).join('<br>')}
       </div>
       <div style="font-size:13px;font-weight:600;margin-bottom:4px;">Choose a format:</div>
       <div class="export-opts">${exportOpts}</div>
       <div style="display:flex;gap:10px;margin-top:16px;align-items:center;flex-wrap:wrap;">
-        <button class="btn-p" onclick="exportAction(this,'Downloaded — check your downloads folder ✓')">Download →</button>
-        <button class="btn-o" onclick="exportAction(this,'Share link copied to clipboard ✓')">Copy share link</button>
+        <button class="btn-p" onclick="exportDownload()">Download →</button>
+        <button class="btn-o" onclick="exportCopy()">Copy to clipboard</button>
         <span style="font-size:11.5px;color:var(--tx3);margin-left:auto;">You can also keep editing — go back anytime.</span>
       </div>
       <div id="export-status-msg" style="display:none;margin-top:8px;font-size:12.5px;font-weight:600;color:var(--ok);padding:7px 11px;background:var(--okL);border:1px solid var(--okB);border-radius:7px;"></div>
@@ -2109,21 +2168,46 @@ function doExport() {
     <span>To keep quality high and prevent errors, Claude recommends starting a new session for your next task.</span>
   </div>`;
 
-  // Append to container (after existing content)
   const existing = container.querySelector('.export-panel');
   if (existing) existing.remove();
   container.insertAdjacentHTML('beforeend', exportHTML);
   container.querySelector('.export-panel').scrollIntoView({behavior:'smooth',block:'center'});
 }
 
+function _getExportContent() {
+  const c = CASES[currentCase];
+  const taskType = detectTaskType(c.goal);
+  const acceptedOutputs = c.outputs.filter((_, i) => locked.has('os'+(i+1)));
+  const sections = acceptedOutputs.length > 0 ? acceptedOutputs : c.outputs;
+  const fmt = (document.querySelector('.export-opt.selected') || {}).dataset?.format || '';
+  if (taskType === 'prototype' && fmt !== 'pdf') {
+    return { text: buildPrototypeHTML(sections), filename: 'prototype.html', mime: 'text/html', isBinary: false };
+  }
+  const text = sections.map(s => s.title + '\n\n' + (s.body || s.txt || '').replace(/<[^>]+>/g, '') + '\n\n---\n').join('\n');
+  return { text, filename: 'export.txt', mime: 'text/plain', isBinary: false };
+}
+
+function exportDownload() {
+  const { text, filename, mime } = _getExportContent();
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const el = document.getElementById('export-status-msg');
+  if (el) { el.textContent = 'Downloaded — check your downloads folder ✓'; el.style.display = 'block'; setTimeout(()=>el.style.display='none', 3000); }
+}
+
+function exportCopy() {
+  const { text } = _getExportContent();
+  navigator.clipboard.writeText(text).catch(() => {});
+  const el = document.getElementById('export-status-msg');
+  if (el) { el.textContent = 'Copied to clipboard ✓'; el.style.display = 'block'; setTimeout(()=>el.style.display='none', 3000); }
+}
 
 function exportAction(btn, msg) {
   const el = document.getElementById('export-status-msg');
-  if (el) {
-    el.textContent = msg;
-    el.style.display = 'block';
-    setTimeout(() => { el.style.display = 'none'; }, 3000);
-  }
+  if (el) { el.textContent = msg; el.style.display = 'block'; setTimeout(() => { el.style.display = 'none'; }, 3000); }
 }
 
 function selectExport(el) {
