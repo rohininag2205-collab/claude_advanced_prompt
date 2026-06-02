@@ -1,0 +1,1818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Claude · Advanced Prompting</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ══════════════ COLOUR-BLIND FRIENDLY PALETTE ══════════════
+   Uses blue/orange primary distinction (safe for protanopia/deuteranopia).
+   All status indicators use icon+text+shape, never colour alone.
+   Meets WCAG AA contrast on white backgrounds. */
+:root{
+  --bg:#F7F5F1;--surf:#FFF;--surf2:#F2EEE8;
+  --bdr:#E5DED4;--bdr2:#D4C9BC;
+  --tx:#1C1917;--tx2:#57524D;--tx3:#6B6055;
+  --cl:#D97757;--clL:#FDF3EE;--clD:#B85C38;
+  /* Status: blue=verified, orange=review, dark-red=validate, purple=edited */
+  --ok:#0369A1;--okL:#E0F2FE;--okB:#7DD3FC;
+  --warn:#92400E;--warnL:#FFFBEB;--warnB:#FDE68A;
+  --danger:#9A3412;--dangerL:#FFF7ED;--dangerB:#FDBA74;
+  --purple:#5B21B6;--purpleL:#F5F3FF;--purpleB:#DDD6FE;
+  --blue:#1E40AF;--blueL:#EFF6FF;--blueB:#BFDBFE;
+  /* Stakes: shape+icon+text, not colour alone */
+  --sLow:#0369A1;--sLowL:#E0F2FE;--sLowB:#7DD3FC;
+  --sMed:#92400E;--sMedL:#FFFBEB;--sMedB:#FDE68A;
+  --sHigh:#9A3412;--sHighL:#FFF7ED;--sHighB:#FDBA74;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--tx);font-size:14px;line-height:1.5;height:100vh;overflow:hidden;}
+.app{display:grid;grid-template-columns:220px 1fr 268px;height:100vh;}
+
+/* ── SIDEBAR ── */
+.sidebar{background:var(--surf);border-right:1px solid var(--bdr);display:flex;flex-direction:column;padding:14px 8px 10px;gap:1px;overflow-y:auto;}
+.logo{font-size:18px;font-weight:700;letter-spacing:-.4px;padding:4px 10px 14px;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;font-size:13px;font-weight:500;color:var(--tx2);cursor:pointer;transition:all .14s;user-select:none;border:none;background:none;width:100%;text-align:left;font-family:inherit;}
+.nav-item:hover{background:var(--surf2);color:var(--tx);}
+.nav-item svg{width:15px;height:15px;opacity:.55;flex-shrink:0;}
+.nav-item.active svg,.nav-item.active{opacity:1;}
+.sec-label{font-size:10.5px;font-weight:600;letter-spacing:.9px;text-transform:uppercase;color:var(--tx3);padding:10px 10px 4px;margin-top:2px;}
+.nav-item.prod{font-weight:600;}
+.nav-item.active{background:var(--clL);color:var(--cl);}
+.nbeta{font-size:9px;font-weight:700;background:var(--cl);color:#fff;padding:1px 5px;border-radius:3px;margin-left:auto;}
+
+/* ── MAIN ── */
+.main{display:flex;flex-direction:column;overflow:hidden;}
+.topbar{display:flex;align-items:center;gap:10px;padding:11px 22px;border-bottom:1px solid var(--bdr);background:var(--surf);flex-shrink:0;}
+.topbar-title{font-size:14px;font-weight:700;flex:1;}
+.model-pill{font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:4px;background:var(--surf2);border:1px solid var(--bdr2);color:var(--tx2);}
+.stakes-tag{font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:4px;}
+.tag-high{background:var(--sHighL);color:var(--sHigh);border:1px solid var(--sHighB);}
+.tag-medium{background:var(--sMedL);color:var(--sMed);border:1px solid var(--sMedB);}
+.tag-low{background:var(--sLowL);color:var(--sLow);border:1px solid var(--sLowB);}
+.btn-ghost{background:none;border:none;color:var(--tx3);font-family:inherit;font-size:12.5px;cursor:pointer;padding:4px 9px;border-radius:6px;}
+.btn-ghost:hover{background:var(--surf2);color:var(--tx2);}
+
+/* ── STEP BAR ── */
+.stepbar{display:flex;align-items:center;padding:0 22px;height:42px;border-bottom:1px solid var(--bdr);background:var(--surf);flex-shrink:0;}
+.step{display:flex;align-items:center;gap:5px;padding:0 11px;height:100%;font-size:12px;font-weight:500;color:var(--tx3);border-bottom:2px solid transparent;cursor:pointer;transition:all .14s;white-space:nowrap;}
+.step:hover{color:var(--tx2);}
+.step.active{color:var(--cl);border-bottom-color:var(--cl);font-weight:600;}
+.step.done{color:var(--ok);}
+.step-n{width:17px;height:17px;border-radius:50%;font-size:9.5px;font-weight:700;display:flex;align-items:center;justify-content:center;background:var(--surf2);color:var(--tx3);flex-shrink:0;}
+.step.active .step-n{background:var(--clL);color:var(--cl);}
+.step.done .step-n{background:var(--okL);color:var(--ok);}
+.step-arr{color:var(--bdr2);font-size:10px;padding:0 2px;}
+.content{flex:1;overflow-y:auto;padding:22px 24px;}
+.content::-webkit-scrollbar{width:4px;}
+.content::-webkit-scrollbar-thumb{background:var(--bdr2);border-radius:4px;}
+.screen{display:none;}
+.screen.active{display:block;}
+
+/* ── RIGHT PANEL ── */
+.rpanel{background:var(--surf);border-left:1px solid var(--bdr);display:flex;flex-direction:column;overflow-y:auto;}
+.rp-hd{font-size:10.5px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:var(--tx3);padding:14px 16px 8px;}
+.rp-sec{padding:0 16px 14px;border-bottom:1px solid var(--bdr);}
+.rp-row{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;padding:3px 0;}
+.rp-row span:first-child{color:var(--tx3);}
+.rp-card{background:var(--surf2);border:1px solid var(--bdr);border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:12px;line-height:1.6;color:var(--tx2);}
+.rp-card strong{color:var(--tx);display:block;margin-bottom:3px;font-size:12.5px;}
+.pbar-bg{height:5px;background:var(--surf2);border-radius:3px;overflow:hidden;margin-top:3px;}
+.pbar-fill{height:100%;border-radius:3px;}
+
+/* ── BUTTONS ── */
+.btn-p{display:inline-flex;align-items:center;gap:7px;background:var(--cl);color:#fff;border:none;border-radius:8px;padding:10px 20px;font-family:inherit;font-size:13.5px;font-weight:600;cursor:pointer;transition:all .17s;}
+.btn-p:hover{background:var(--clD);box-shadow:0 4px 14px rgba(217,119,87,.28);transform:translateY(-1px);}
+.btn-o{display:inline-flex;align-items:center;gap:6px;background:none;color:var(--tx2);border:1.5px solid var(--bdr2);border-radius:8px;padding:9px 16px;font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;transition:all .14s;}
+.btn-o:hover{background:var(--surf2);}
+
+/* case-bar removed */
+
+/* ── PASTE ZONE ── */
+.pz-wrap{margin-bottom:18px;}
+.pz-empty{border:2px dashed var(--bdr2);border-radius:12px;padding:20px;display:flex;align-items:flex-start;gap:14px;cursor:pointer;transition:all .2s;background:var(--surf);}
+.pz-empty:hover{border-color:var(--cl);background:var(--clL);}
+.pz-icon-wrap{width:40px;height:40px;border-radius:10px;background:var(--surf2);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;transition:background .2s;}
+.pz-empty:hover .pz-icon-wrap{background:rgba(217,119,87,.15);}
+.pz-text strong{font-size:14px;font-weight:600;color:var(--tx);display:block;margin-bottom:4px;}
+.pz-text p{font-size:12.5px;color:var(--tx3);line-height:1.6;margin-bottom:10px;}
+.pz-demo-link{font-size:12px;font-weight:600;color:var(--clD);text-decoration:none;cursor:pointer;border:none;background:none;font-family:inherit;padding:0;}
+.pz-demo-link:hover{text-decoration:underline;}
+.pz-input-state{background:var(--surf);border:2px solid var(--cl);border-radius:12px;overflow:hidden;display:none;}
+.pz-input-hd{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--bdr);background:var(--clL);}
+.pz-input-hd-title{font-size:13.5px;font-weight:600;color:var(--clD);flex:1;}
+.pz-textarea{width:100%;min-height:140px;background:var(--surf2);border:none;font-family:inherit;font-size:13px;color:var(--tx);padding:14px 16px;outline:none;resize:vertical;line-height:1.65;}
+.pz-textarea::placeholder{color:var(--tx3);}
+.pz-input-foot{display:flex;align-items:center;gap:10px;padding:11px 16px;border-top:1px solid var(--bdr);}
+.pz-hint{font-size:11.5px;color:var(--tx3);flex:1;}
+.pz-parsing-state{background:var(--surf);border:2px solid var(--cl);border-radius:12px;padding:20px;display:none;}
+.pz-parsing-title{font-size:14px;font-weight:600;color:var(--tx);margin-bottom:14px;display:flex;align-items:center;gap:9px;}
+.spin-sm{width:16px;height:16px;border:2px solid var(--bdr);border-top-color:var(--cl);border-radius:50%;animation:spin .6s linear infinite;flex-shrink:0;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.parse-step{font-size:12.5px;display:flex;align-items:center;gap:9px;margin-bottom:8px;color:var(--tx3);transition:color .3s;}
+.parse-step.done{color:var(--ok);}
+.parse-step.active{color:var(--tx);font-weight:500;}
+.pz-parsed-banner{background:var(--okL);border:1.5px solid var(--okB);border-radius:10px;padding:12px 16px;margin-bottom:14px;display:none;}
+.pb-row{display:flex;align-items:center;gap:10px;}
+.pb-icon{font-size:18px;}
+.pb-text strong{font-size:13px;font-weight:700;color:var(--ok);display:block;margin-bottom:2px;}
+.pb-text span{font-size:12px;color:var(--tx2);}
+.pb-count{font-size:11px;font-weight:700;background:var(--ok);color:#fff;padding:2px 8px;border-radius:4px;margin-left:auto;}
+
+/* ── BUILDER CARDS ── */
+.or-div{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--tx3);margin-bottom:14px;}
+.or-div::before,.or-div::after{content:'';flex:1;height:1px;background:var(--bdr);}
+.bc{background:var(--surf);border:1.5px solid var(--bdr);border-radius:11px;margin-bottom:11px;overflow:hidden;transition:border-color .2s;}
+.bc.open{border-color:rgba(217,119,87,.4);}
+.bc.parsed-highlight{border-color:var(--ok);animation:pulse-ok 2s ease-out;}
+@keyframes pulse-ok{0%{box-shadow:0 0 0 4px rgba(3,105,161,.2)}100%{box-shadow:none}}
+.bc-hd{display:flex;align-items:center;gap:10px;padding:13px 16px;cursor:pointer;user-select:none;}
+.bc-icon{font-size:15px;width:24px;text-align:center;}
+.bc-title{font-size:13.5px;font-weight:600;flex:1;}
+.bc-req{font-size:10px;font-weight:600;padding:2px 7px;border-radius:4px;border:1px solid;}
+.req{background:var(--clL);color:var(--cl);border-color:rgba(217,119,87,.3);}
+.opt{background:var(--surf2);color:var(--tx3);border-color:var(--bdr);}
+.imp{background:var(--warnL);color:var(--warn);border-color:var(--warnB);}
+.auto-badge{font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:4px;background:var(--okL);color:var(--ok);border:1px solid var(--okB);letter-spacing:.2px;}
+.bc-chev{color:var(--tx3);font-size:11px;transition:transform .2s;}
+.bc-chev.open{transform:rotate(180deg);}
+.bc-body{padding:4px 16px 14px;border-top:1px solid var(--bdr);}
+.bc-desc{font-size:11.5px;color:var(--tx3);margin:8px 0;line-height:1.5;}
+textarea.inp{width:100%;background:var(--surf2);border:1.5px solid var(--bdr);border-radius:8px;color:var(--tx);font-family:inherit;font-size:13.5px;padding:10px 13px;resize:vertical;outline:none;transition:border-color .15s;line-height:1.6;}
+textarea.inp:focus{border-color:var(--cl);background:var(--surf);box-shadow:0 0 0 3px rgba(217,119,87,.07);}
+textarea.inp::placeholder{color:var(--tx3);}
+textarea.inp.auto-filled{border-color:var(--ok);background:var(--okL);}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+.chip{font-size:12px;padding:4px 11px;border-radius:20px;background:var(--surf2);border:1.5px solid var(--bdr);color:var(--tx2);cursor:pointer;transition:all .13s;}
+.chip:hover{border-color:var(--bdr2);}
+.chip.sel{background:var(--clL);border-color:var(--cl);color:var(--cl);font-weight:600;}
+.file-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px;}
+.file-chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:4px 10px;border-radius:6px;background:var(--blueL);border:1.5px solid var(--blueB);color:var(--blue);font-weight:500;}
+.file-chip .fc-x{cursor:pointer;opacity:.6;font-size:13px;}
+.file-chip .fc-x:hover{opacity:1;}
+.add-file-btn{display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:4px 10px;border-radius:6px;background:none;border:1.5px dashed var(--bdr2);color:var(--tx3);cursor:pointer;font-family:inherit;transition:all .13s;}
+.add-file-btn:hover{border-color:var(--cl);color:var(--cl);}
+.role-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
+.role-chip{font-size:12px;padding:5px 12px;border-radius:20px;background:var(--surf2);border:1.5px solid var(--bdr);color:var(--tx2);cursor:pointer;transition:all .13s;}
+.role-chip:hover{border-color:var(--cl);color:var(--cl);}
+.role-chip.sel{background:var(--clL);border-color:var(--cl);color:var(--cl);font-weight:600;}
+
+/* ── STAKES — uses icon+text+shape, not colour alone ── */
+.stakes-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:9px;}
+.sk{padding:11px 12px;border-radius:9px;border:2px solid var(--bdr);cursor:pointer;transition:all .14s;text-align:center;}
+.sk:hover{border-color:var(--bdr2);}
+.sk.sel-low{border-color:var(--sLow);background:var(--sLowL);}
+.sk.sel-med{border-color:var(--sMed);background:var(--sMedL);}
+.sk.sel-high{border-color:var(--sHigh);background:var(--sHighL);border-width:3px;}
+.sk-icon{font-size:22px;margin-bottom:3px;}
+.sk-lbl{font-size:12px;font-weight:700;}
+.sk.sel-low .sk-lbl{color:var(--sLow);}
+.sk.sel-med .sk-lbl{color:var(--sMed);}
+.sk.sel-high .sk-lbl{color:var(--sHigh);}
+.sk-desc{font-size:10.5px;color:var(--tx3);margin-top:2px;line-height:1.4;}
+.stakes-note{margin-top:9px;font-size:12px;border-radius:7px;padding:8px 11px;border:1px solid;}
+
+/* ── MODEL ── */
+.model-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:7px;margin-top:9px;}
+.mod-card{padding:12px 13px;border-radius:9px;border:2px solid var(--bdr);cursor:pointer;transition:all .14s;}
+.mod-card:hover{border-color:var(--bdr2);}
+.mod-card.sel{border-color:var(--cl);background:var(--clL);}
+.mod-name{font-size:12px;font-weight:700;color:var(--tx);}
+.mod-card.sel .mod-name{color:var(--cl);}
+.mod-speed{font-size:10.5px;color:var(--tx3);margin-top:1px;}
+.mod-for{font-size:10.5px;color:var(--tx3);margin-top:4px;line-height:1.4;}
+.mod-est{margin-top:11px;display:flex;justify-content:space-between;align-items:center;padding:8px 11px;background:var(--surf2);border-radius:7px;font-size:12px;}
+.mod-est span{color:var(--tx3);}
+
+/* ── CLARIFY ── */
+.interp-card{background:var(--surf);border:1.5px solid var(--bdr2);border-radius:12px;padding:15px 17px;margin-bottom:15px;}
+.interp-hd{display:flex;align-items:flex-start;gap:11px;margin-bottom:11px;}
+.interp-ico{width:32px;height:32px;background:var(--clL);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;}
+.interp-quote{font-size:13px;color:var(--tx2);line-height:1.75;background:var(--surf2);border-radius:8px;padding:11px 14px;font-style:italic;border-left:3px solid var(--cl);}
+.assm-lbl{font-size:11.5px;font-weight:700;color:var(--tx3);margin-top:11px;margin-bottom:6px;}
+.assm-row{display:flex;flex-wrap:wrap;gap:6px;}
+.assm-chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:4px 11px;background:var(--blueL);border:1.5px solid var(--blueB);border-radius:20px;color:var(--blue);cursor:pointer;}
+.assm-chip.risk{background:var(--dangerL);border-color:var(--dangerB);color:var(--danger);}
+.qcard{background:var(--surf);border:1.5px solid var(--bdr);border-radius:10px;padding:13px 15px;margin-bottom:10px;transition:all .2s;}
+.qcard.skipped{opacity:.5;border-style:dashed;}
+.qcard-num{font-size:10px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:var(--cl);margin-bottom:4px;}
+.qcard-q{font-size:13.5px;font-weight:600;color:var(--tx);margin-bottom:3px;}
+.qcard-why{font-size:11.5px;color:var(--tx3);font-style:italic;margin-bottom:10px;}
+.q-opts{display:flex;flex-wrap:wrap;gap:6px;}
+.q-opt{font-size:12.5px;padding:5px 13px;border-radius:20px;background:var(--surf2);border:1.5px solid var(--bdr);color:var(--tx2);cursor:pointer;transition:all .13s;}
+.q-opt:hover{border-color:var(--bdr2);}
+.q-opt.sel{background:var(--clL);border-color:var(--cl);color:var(--cl);font-weight:600;}
+.q-skip-inline{font-size:11px;color:var(--tx3);background:none;border:1px solid var(--bdr);cursor:pointer;font-family:inherit;padding:5px 10px;border-radius:20px;margin-left:auto;}
+.q-skip-inline:hover{background:var(--surf2);}
+.skip-warn{background:var(--warnL);border:1.5px solid var(--warnB);border-radius:10px;padding:13px 16px;margin:13px 0;display:none;}
+.sw-title{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:700;color:var(--warn);margin-bottom:6px;}
+.sw-body{font-size:12.5px;color:var(--warn);line-height:1.6;margin-bottom:11px;}
+.sw-opts{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.sw-btn{padding:11px;border-radius:8px;border:1.5px solid;cursor:pointer;transition:all .14s;font-size:12.5px;font-weight:600;font-family:inherit;text-align:left;}
+.sw-btn.assume{background:var(--warnL);border-color:var(--warnB);color:var(--warn);}
+.sw-btn.blank{background:var(--surf);border-color:var(--bdr2);color:var(--tx2);}
+.sw-btn.chosen{outline:3px solid;outline-offset:1px;}
+.sw-sub{font-size:11px;font-weight:400;opacity:.8;display:block;margin-top:3px;}
+
+/* ── RUNNING / GENERATE ── */
+.run-center{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:55vh;gap:20px;text-align:center;}
+.spinner{width:40px;height:40px;border:3px solid var(--bdr);border-top-color:var(--cl);border-radius:50%;animation:spin .75s linear infinite;}
+.run-title{font-size:19px;font-weight:700;}
+.run-title span{color:var(--cl);}
+.rs{font-size:12.5px;color:var(--tx3);display:flex;align-items:center;gap:9px;transition:color .3s;}
+.rs.done{color:var(--ok);}
+.rs.active{color:var(--tx);font-weight:500;}
+
+/* ── OUTPUT ── */
+.out-sec{background:var(--surf);border:1.5px solid var(--bdr);border-radius:12px;margin-bottom:12px;overflow:hidden;transition:all .25s;}
+.out-sec.locked{border-color:var(--okB);background:var(--okL);pointer-events:none;}
+.out-sec.editing{border-color:var(--warn);box-shadow:0 0 0 3px rgba(146,64,14,.07);}
+.os-hd{display:flex;align-items:center;gap:9px;padding:12px 16px;flex-wrap:wrap;}
+.os-title{font-size:13px;font-weight:700;flex:1;}
+.os-acts{display:flex;gap:6px;align-items:center;flex-shrink:0;flex-wrap:wrap;}
+.os-body{padding:0 17px 14px;}
+.os-txt{font-size:13.5px;line-height:1.85;color:var(--tx);}
+.os-txt[contenteditable="true"]{background:var(--warnL);border:1.5px solid var(--warnB);border-radius:8px;padding:10px 13px;outline:none;min-height:60px;}
+.assm-hl{background:var(--blueL);border-bottom:2px solid #93C5FD;cursor:help;border-radius:2px;padding:0 2px;position:relative;}
+.assm-hl:hover::after{content:attr(data-tip);position:absolute;bottom:115%;left:0;background:#1e3a8a;color:#fff;font-size:11px;padding:6px 9px;border-radius:6px;width:230px;line-height:1.5;z-index:10;white-space:normal;pointer-events:none;}
+/* Badges: icon+text, not colour alone */
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:20px;cursor:pointer;border:1px solid;white-space:nowrap;}
+.bv{background:var(--okL);color:var(--ok);border-color:var(--okB);}
+.br{background:var(--warnL);color:var(--warn);border-color:var(--warnB);}
+.bd{background:var(--dangerL);color:var(--danger);border-color:var(--dangerB);}
+.be{background:var(--purpleL);color:var(--purple);border-color:var(--purpleB);}
+.btn-edit{font-size:11.5px;font-weight:600;padding:4px 11px;border-radius:6px;background:var(--surf2);color:var(--tx2);border:1.5px solid var(--bdr);cursor:pointer;font-family:inherit;}
+.btn-edit:hover{background:var(--warnL);color:var(--warn);border-color:var(--warnB);}
+.btn-save{font-size:11.5px;font-weight:700;padding:4px 11px;border-radius:6px;background:var(--okL);color:var(--ok);border:1.5px solid var(--okB);cursor:pointer;font-family:inherit;}
+.btn-cancel-e{font-size:11.5px;padding:4px 10px;border-radius:6px;background:none;color:var(--tx3);border:1.5px solid var(--bdr);cursor:pointer;font-family:inherit;}
+.btn-lock{font-size:11.5px;font-weight:600;padding:4px 11px;border-radius:6px;background:var(--okL);color:var(--ok);border:1.5px solid var(--okB);cursor:pointer;font-family:inherit;}
+.btn-lock:hover{background:#BAE6FD;}
+.reason-panel{background:var(--surf2);border-top:1px solid var(--bdr);padding:13px 17px;font-size:12.5px;color:var(--tx2);line-height:1.65;display:none;}
+.reason-panel strong{color:var(--tx);display:block;margin-bottom:4px;}
+.alt-box{background:var(--purpleL);border:1px solid var(--purpleB);border-radius:8px;padding:11px 13px;margin-top:9px;font-size:12px;color:var(--purple);line-height:1.6;}
+.alt-box strong{color:var(--purple);display:block;margin-bottom:3px;}
+.locked-banner{display:flex;align-items:center;gap:8px;padding:8px 17px;background:var(--okL);border-top:1px solid var(--okB);font-size:12px;color:var(--ok);font-weight:700;}
+
+/* Refine */
+.refine-panel{background:var(--surf);border:2px solid var(--bdr);border-radius:14px;margin-top:20px;overflow:hidden;}
+.refine-panel-hd{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--bdr);}
+.rph-icon{width:34px;height:34px;background:var(--clL);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;}
+.rph-text strong{font-size:14px;font-weight:700;display:block;margin-bottom:2px;}
+.rph-text span{font-size:12px;color:var(--tx3);}
+.refine-status{display:flex;gap:10px;padding:10px 18px;border-bottom:1px solid var(--bdr);background:var(--bg);flex-wrap:wrap;}
+.lock-pill{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:var(--ok);background:var(--okL);border:1px solid var(--okB);border-radius:20px;padding:3px 10px;}
+.unlock-pill{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--cl);background:var(--clL);border:1px solid rgba(217,119,87,.35);border-radius:20px;padding:3px 10px;}
+.refine-input-wrap{padding:14px 18px;}
+.refine-inp-lbl{font-size:11.5px;font-weight:700;color:var(--tx3);margin-bottom:7px;}
+.refine-inp{width:100%;background:var(--surf2);border:1.5px solid var(--bdr);border-radius:9px;color:var(--tx);font-family:inherit;font-size:13.5px;padding:11px 14px;resize:vertical;outline:none;line-height:1.65;min-height:90px;}
+.refine-inp:focus{border-color:var(--cl);background:var(--surf);box-shadow:0 0 0 3px rgba(217,119,87,.07);}
+.refine-inp::placeholder{color:var(--tx3);}
+.refine-footer{display:flex;align-items:center;gap:10px;padding:0 18px 16px;}
+.refine-hint{font-size:12px;color:var(--tx3);flex:1;}
+
+/* Phase toggle */
+.phase-toggle-row{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--bdr);margin-top:14px;}
+.pt-lbl strong{font-size:13px;font-weight:600;color:var(--tx);display:block;margin-bottom:2px;}
+.pt-lbl span{font-size:11.5px;color:var(--tx3);}
+.toggle-pill{width:42px;height:24px;border-radius:12px;border:none;cursor:pointer;position:relative;transition:background .2s;flex-shrink:0;}
+.toggle-pill.off{background:var(--bdr2);}
+.toggle-pill.on{background:var(--cl);}
+.toggle-thumb{width:20px;height:20px;border-radius:50%;background:#fff;position:absolute;top:2px;transition:left .2s;}
+.toggle-pill.off .toggle-thumb{left:2px;}
+.toggle-pill.on .toggle-thumb{left:20px;}
+.phase-section{display:none;}
+.phase-item{display:flex;align-items:flex-start;gap:11px;padding:12px 14px;background:var(--surf2);border:1px solid var(--bdr);border-radius:9px;margin-bottom:0;transition:border-color .15s;}
+.phase-num{width:24px;height:24px;border-radius:50%;font-size:11.5px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px;background:var(--clL);color:var(--cl);}
+.phase-content{flex:1;}
+.phase-title-inp{width:100%;background:none;border:none;font-family:inherit;font-size:13px;font-weight:600;color:var(--tx);outline:none;margin-bottom:3px;}
+.phase-del-inp{width:100%;background:none;border:none;font-family:inherit;font-size:12px;color:var(--tx3);outline:none;}
+.phase-connector{display:flex;align-items:center;justify-content:center;height:22px;position:relative;}
+.phase-connector::before{content:'';position:absolute;left:50%;top:0;width:1.5px;height:100%;background:var(--bdr);transform:translateX(-50%);}
+.gate-lock{display:flex;align-items:center;justify-content:center;gap:5px;font-size:11px;font-weight:600;color:var(--clD);background:var(--clL);border:1px solid rgba(217,119,87,.3);border-radius:20px;padding:2px 9px;z-index:1;position:relative;}
+
+/* ── DIFF MARKERS ── */
+.diff-new{background:#FEF3EE;border-bottom:2px solid var(--cl);border-radius:2px;padding:0 1px;}
+.diff-del{background:var(--dangerL);text-decoration:line-through;color:var(--tx3);}
+/* ── RERUN BANNER ── */
+.rerun-banner{background:var(--okL);border:1.5px solid var(--okB);border-radius:10px;padding:13px 17px;margin-bottom:17px;display:flex;align-items:center;gap:12px;}
+.rerun-banner span:first-child{font-size:20px;}
+.rerun-banner-text{flex:1;}
+.rerun-banner-text strong{font-size:13.5px;font-weight:700;color:var(--ok);display:block;margin-bottom:2px;}
+.rerun-banner-text div{font-size:12px;color:var(--tx2);}
+/* ── EXPORT PANEL ── */
+.export-panel{background:var(--surf);border:2px solid var(--okB);border-radius:14px;margin-top:20px;overflow:hidden;}
+.export-hd{display:flex;align-items:center;gap:12px;padding:16px 18px;border-bottom:1px solid var(--bdr);background:var(--okL);}
+.export-hd-icon{width:38px;height:38px;background:var(--ok);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff;flex-shrink:0;}
+.export-body{padding:16px 18px;}
+.export-opts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:12px;}
+.export-opt{padding:14px;border-radius:10px;border:2px solid var(--bdr);cursor:pointer;text-align:center;transition:all .14s;}
+.export-opt:hover{border-color:var(--cl);background:var(--clL);}
+.export-opt.selected{border-color:var(--cl);background:var(--clL);}
+.export-opt-icon{font-size:24px;margin-bottom:6px;}
+.export-opt-label{font-size:13px;font-weight:700;}
+.export-opt-desc{font-size:11px;color:var(--tx3);margin-top:3px;}
+/* ── SCREEN-BY-SCREEN (prototype case) ── */
+.screen-nav{display:flex;gap:6px;margin-bottom:14px;padding:10px 0;border-bottom:1px solid var(--bdr);}
+.screen-nav-btn{font-size:12px;font-weight:600;padding:6px 14px;border-radius:20px;border:1.5px solid var(--bdr);background:var(--surf2);color:var(--tx2);cursor:pointer;font-family:inherit;transition:all .14s;display:flex;align-items:center;gap:6px;}
+.screen-nav-btn:hover{border-color:var(--bdr2);}
+.screen-nav-btn.active{background:var(--clL);border-color:var(--cl);color:var(--cl);}
+.screen-nav-btn.done{background:var(--okL);border-color:var(--okB);color:var(--ok);}
+.screen-nav-btn .sn-check{font-size:11px;}
+
+/* Focus visible */
+button:focus-visible,a:focus-visible,textarea:focus-visible,input:focus-visible,[tabindex]:focus-visible{outline:2.5px solid var(--cl);outline-offset:2px;border-radius:4px;}
+textarea.inp:focus-visible{outline:none;border-color:var(--cl);box-shadow:0 0 0 3px rgba(217,119,87,.12);}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="logo">Claude</div>
+  <button class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New chat</button>
+  <button class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Search</button>
+  <button class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Chats</button>
+  <button class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Projects</button>
+  <div class="sec-label">Products</div>
+  <button class="nav-item prod active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg>Advanced Prompting<span class="nbeta">BETA</span></button>
+</aside>
+
+<!-- MAIN -->
+<main class="main" role="main">
+  <div class="topbar">
+    <div class="topbar-title">Advanced Prompting</div>
+    <span class="model-pill" id="model-pill">Sonnet 4.6</span>
+    <span class="stakes-tag tag-medium" id="stakes-display">&#9650; Medium</span>
+    <button class="btn-ghost">History</button>
+  </div>
+
+  <div class="stepbar">
+    <div class="step active" id="stp1" onclick="goStep(1)"><span class="step-n">1</span>Describe</div>
+    <span class="step-arr">›</span>
+    <div class="step" id="stp2" onclick="goStep(2)"><span class="step-n">2</span>Review</div>
+    <span class="step-arr">›</span>
+    <div class="step" id="stp3"><span class="step-n">3</span>Working</div>
+    <span class="step-arr">›</span>
+    <div class="step" id="stp4" onclick="goStep(4)"><span class="step-n">4</span>Results</div>
+  </div>
+  <div class="content">
+
+    <!-- ═══════════════ SCREEN 1: DESCRIBE (was "Build") ═══════════════ -->
+    <div class="screen active" id="sc-builder">
+      <div style="margin-bottom:18px">
+        <div style="font-size:22px;font-weight:700;margin-bottom:4px">What do you need?</div>
+        <div style="font-size:13px;color:var(--tx3)">Describe your task in your own words, or fill in the fields below.</div>
+      </div>
+
+      <!-- PASTE ZONE — FIX #1: clicking opens textarea, not example -->
+      <div class="pz-wrap">
+        <div class="pz-empty" id="pz-empty" onclick="openPasteInput()">
+          <div class="pz-icon-wrap">📝</div>
+          <div class="pz-text">
+            <strong>Type or paste your request here</strong>
+            <p>Describe what you need in everyday language. Claude will figure out the details and fill in the fields below for you.</p>
+            <button class="pz-demo-link" onclick="event.stopPropagation();loadDemo()">See an example to get started</button>
+          </div>
+        </div>
+
+        <div class="pz-input-state" id="pz-input">
+          <div class="pz-input-hd">
+            <span style="font-size:16px">📝</span>
+            <span class="pz-input-hd-title">Describe your task</span>
+            <button class="btn-ghost" onclick="closePasteInput()" style="font-size:12px" aria-label="Close">✕ Close</button>
+          </div>
+          <textarea class="pz-textarea" id="pz-text" placeholder="Example: 'I have two resumes — mine and a friend's. Merge them so my resume uses the writing style of the second one, but keep my actual experience unchanged.'"></textarea>
+          <div class="pz-input-foot">
+            <span class="pz-hint">Write naturally — Claude understands plain language</span>
+            <input type="file" id="pz-file-input" multiple style="display:none" onchange="handlePzFiles(this)">
+            <button class="add-file-btn" onclick="document.getElementById('pz-file-input').click()" style="font-size:12px;padding:6px 11px">📎 Attach files</button>
+            <div id="pz-file-list" style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;flex:1;min-width:0"></div>
+            <button class="btn-o" style="font-size:12.5px;padding:7px 14px" onclick="closePasteInput()">Cancel</button>
+            <button class="btn-p" style="font-size:13px;padding:8px 18px" onclick="startParsing()">Understand my request →</button>
+          </div>
+        </div>
+
+        <div class="pz-parsing-state" id="pz-parsing">
+          <div class="pz-parsing-title"><div class="spin-sm"></div>Reading your request…</div>
+          <div class="parse-step" id="ps1" data-label="Understanding what you need">◦ Understanding what you need</div>
+          <div class="parse-step" id="ps2" data-label="Identifying your files and references">◦ Identifying your files and references</div>
+          <div class="parse-step" id="ps3" data-label="Noting your rules and preferences">◦ Noting your rules and preferences</div>
+          <div class="parse-step" id="ps4" data-label="Choosing the right approach">◦ Choosing the right approach</div>
+        </div>
+      </div>
+
+      <div class="pz-parsed-banner" id="pz-banner">
+        <div class="pb-row">
+          <span class="pb-icon">&#10003;</span>
+          <div class="pb-text">
+            <strong>Got it — check the fields below</strong>
+            <span id="pb-detail">Fields filled from your description</span>
+          </div>
+          <span class="pb-count">Review ↓</span>
+        </div>
+      </div>
+
+      <div class="or-div" id="or-div">or fill in each field yourself</div>
+
+      <!-- GOAL -->
+      <div class="bc" id="bc-goal">
+        <div class="bc-hd" onclick="toggleBC('goal')">
+          <span class="bc-icon">🎯</span><span class="bc-title">What should Claude do?</span>
+          <span class="bc-req req">Required</span>
+          <span class="auto-badge" id="auto-goal" style="display:none">Filled</span>
+          <span class="bc-chev" id="chev-goal">▼</span>
+        </div>
+        <div class="bc-body" id="body-goal" style="display:none">
+          <div class="bc-desc">Be specific about the end result you want — not just the topic.</div>
+          <textarea class="inp" id="inp-goal" rows="3" placeholder="e.g. Rewrite my resume using the style and structure of my friend's resume, without changing my actual experience" aria-label="Goal"></textarea>
+        </div>
+      </div>
+
+      <!-- CONTEXT + FILES -->
+      <div class="bc" id="bc-ctx">
+        <div class="bc-hd" onclick="toggleBC('ctx')">
+          <span class="bc-icon">📋</span><span class="bc-title">Background &amp; files</span>
+          <span class="bc-req imp">Helpful</span>
+          <span class="auto-badge" id="auto-ctx" style="display:none">Filled</span>
+          <span class="bc-chev" id="chev-ctx">▼</span>
+        </div>
+        <div class="bc-body" id="body-ctx" style="display:none">
+          <div class="bc-desc">What does Claude need to know? The more background you give, the fewer guesses it makes.</div>
+          <textarea class="inp" id="inp-ctx" rows="4" placeholder="Background information, facts, details Claude should know..." aria-label="Context"></textarea>
+          <div class="bc-desc" style="margin-top:12px">Files for this task:</div>
+          <input type="file" id="bg-file-input" multiple style="display:none" onchange="handleBgFiles(this)">
+          <div class="file-chips" id="file-chips">
+            <button class="add-file-btn" onclick="document.getElementById('bg-file-input').click()">+ Attach file</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- OUTPUT FORMAT -->
+      <div class="bc" id="bc-fmt">
+        <div class="bc-hd" onclick="toggleBC('fmt')">
+          <span class="bc-icon">📄</span><span class="bc-title">How should the result look?</span>
+          <span class="bc-req opt">Optional</span>
+          <span class="auto-badge" id="auto-fmt" style="display:none">Filled</span>
+          <span class="bc-chev" id="chev-fmt">▼</span>
+        </div>
+        <div class="bc-body" id="body-fmt" style="display:none">
+          <div class="bc-desc">Pick a format or describe what you want.</div>
+          <div class="chips" style="margin-bottom:10px">
+            <span class="chip" onclick="this.classList.toggle('sel')">Document</span>
+            <span class="chip" onclick="this.classList.toggle('sel')">Email</span>
+            <span class="chip" onclick="this.classList.toggle('sel')">Code / HTML</span>
+            <span class="chip" onclick="this.classList.toggle('sel')">Slide outline</span>
+            <span class="chip" onclick="this.classList.toggle('sel')">Bullet list</span>
+          </div>
+          <textarea class="inp" id="inp-fmt" rows="2" placeholder="e.g. Same format as the second resume, keep it to one page"></textarea>
+
+          <!-- MULTI-STEP TOGGLE -->
+          <div class="phase-toggle-row">
+            <div class="pt-lbl">
+              <strong>This task has multiple steps</strong>
+              <span>Claude will pause between steps and wait for your OK before continuing</span>
+            </div>
+            <button class="toggle-pill off" id="phase-toggle" onclick="togglePhases(this)" aria-pressed="false" aria-label="Toggle multi-step mode">
+              <div class="toggle-thumb"></div>
+            </button>
+          </div>
+          <div class="phase-section" id="phase-section"></div>
+        </div>
+      </div>
+
+      <!-- INSTRUCTIONS & ROLE -->
+      <div class="bc" id="bc-role">
+        <div class="bc-hd" onclick="toggleBC('role')">
+          <span class="bc-icon">🎭</span><span class="bc-title">Special instructions</span>
+          <span class="bc-req opt">Optional</span>
+          <span class="auto-badge" id="auto-role" style="display:none">Filled</span>
+          <span class="bc-chev" id="chev-role">▼</span>
+        </div>
+        <div class="bc-body" id="body-role" style="display:none">
+          <div class="bc-desc">Tell Claude what kind of expert to act as, or any standing rules.</div>
+          <div class="role-chips">
+            <span class="role-chip" onclick="setRole(this,'Act as a senior product manager.')">Product Manager</span>
+            <span class="role-chip" onclick="setRole(this,'Act as a professional resume writer.')">Resume Writer</span>
+            <span class="role-chip" onclick="setRole(this,'Act as a UX designer.')">Designer</span>
+            <span class="role-chip" onclick="setRole(this,'Act as a financial analyst. Be precise with numbers.')">Financial Analyst</span>
+          </div>
+          <textarea class="inp" rows="2" id="inp-role" placeholder="e.g. Act as a professional resume writer. Never add fake experience." aria-label="Role and instructions"></textarea>
+          <div class="bc-desc" style="margin-top:10px">Rules Claude should always follow:</div>
+          <div class="chips">
+            <span class="chip" onclick="this.classList.toggle('sel')">Don't make things up</span>
+            <span class="chip" onclick="this.classList.toggle('sel')">Ask before guessing</span>
+            <span class="chip" onclick="this.classList.toggle('sel')">Flag anything uncertain</span>
+            <span class="chip" onclick="this.classList.toggle('sel')">Keep it concise</span>
+          </div>
+          <div class="bc-desc" style="margin-top:10px">Any other rules:</div>
+          <textarea class="inp" id="inp-rules" rows="2" placeholder="e.g. Always cite sources. Never exceed 500 words. Avoid passive voice." aria-label="Additional rules"></textarea>
+        </div>
+      </div>
+
+      <!-- CONSTRAINTS — FIX #3: moved ABOVE stakes -->
+      <div class="bc" id="bc-con">
+        <div class="bc-hd" onclick="toggleBC('con')">
+          <span class="bc-icon">&#9888;</span><span class="bc-title">Things Claude must NOT do</span>
+          <span class="bc-req opt">Optional</span>
+          <span class="auto-badge" id="auto-con" style="display:none">Filled</span>
+          <span class="bc-chev" id="chev-con">▼</span>
+        </div>
+        <div class="bc-body" id="body-con" style="display:none">
+          <div class="bc-desc">Hard rules that apply every time, even on re-runs.</div>
+          <textarea class="inp" id="inp-con" rows="3" placeholder="e.g. Do not add experience I don't have. Do not change my name or contact details." aria-label="Constraints"></textarea>
+        </div>
+      </div>
+
+      <!-- STAKES — FIX #2: separate visual screens per level, FIX #3: below constraints -->
+      <div class="bc" id="bc-stk">
+        <div class="bc-hd" onclick="toggleBC('stk')">
+          <span class="bc-icon">&#9733;</span><span class="bc-title">How important is this?</span>
+          <span class="bc-req imp">Helpful</span>
+          <span class="auto-badge" id="auto-stk" style="display:none">Set</span>
+          <span class="bc-chev" id="chev-stk">▼</span>
+        </div>
+        <div class="bc-body" id="body-stk" style="display:none">
+          <div class="bc-desc">This controls how carefully Claude checks its work before showing you.</div>
+          <div class="stakes-grid">
+            <div class="sk" onclick="setSk('low',this)">
+              <div class="sk-icon">&#9998;</div>
+              <div class="sk-lbl">Quick draft</div>
+              <div class="sk-desc">Brainstorming, notes, experiments</div>
+            </div>
+            <div class="sk" onclick="setSk('med',this)">
+              <div class="sk-icon">&#9650;</div>
+              <div class="sk-lbl">Medium priority</div>
+              <div class="sk-desc">Internal docs, personal projects</div>
+            </div>
+            <div class="sk" onclick="setSk('high',this)">
+              <div class="sk-icon">&#9888;</div>
+              <div class="sk-lbl">High priority</div>
+              <div class="sk-desc">Shared externally, legal, financial, career</div>
+            </div>
+          </div>
+          <div class="stakes-note" id="stakes-note" style="display:none"></div>
+        </div>
+      </div>
+
+      <!-- MODEL -->
+      <div class="bc" id="bc-model">
+        <div class="bc-hd" onclick="toggleBC('model')">
+          <span class="bc-icon">&#9881;</span><span class="bc-title">AI model</span>
+          <span class="bc-req opt">Optional</span>
+          <span class="auto-badge" id="auto-model" style="display:none">Set</span>
+          <span class="bc-chev" id="chev-model">▼</span>
+        </div>
+        <div class="bc-body" id="body-model" style="display:none">
+          <div class="bc-desc">Not sure? <strong>Sonnet 4.6 works for most tasks.</strong></div>
+          <div class="model-grid">
+            <div class="mod-card" onclick="setModel('haiku',this)"><div class="mod-name">Haiku 4.5</div><div class="mod-speed">Fastest</div><div class="mod-for">Quick tasks</div></div>
+            <div class="mod-card sel" id="sonnet46-card" onclick="setModel('sonnet46',this)"><div style="font-size:9px;font-weight:700;background:var(--cl);color:#fff;padding:1px 6px;border-radius:3px;display:inline-block;margin-bottom:5px">RECOMMENDED</div><div class="mod-name">Sonnet 4.6</div><div class="mod-speed">Balanced</div><div class="mod-for">Most tasks</div></div>
+            <div class="mod-card" onclick="setModel('sonnet45',this)"><div class="mod-name">Sonnet 4.5</div><div class="mod-speed">Good value</div><div class="mod-for">Everyday work</div></div>
+            <div class="mod-card" onclick="setModel('opus',this)"><div class="mod-name">Opus 4.6</div><div class="mod-speed">Most powerful</div><div class="mod-for">Complex projects</div></div>
+          </div>
+          <div class="mod-est"><span>Estimated context usage</span><strong id="tok-est" style="font-family:'JetBrains Mono',monospace">~15% of limit</strong></div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:13px;margin-top:8px;padding:14px 0">
+        <button class="btn-p" onclick="goStep(2)">Check my request →</button>
+        <span style="font-size:12px;color:var(--tx3)">Claude will show you what it understood before starting.</span>
+      </div>
+    </div>
+
+    <!-- ═══════════════ SCREEN 2: REVIEW (was "Clarify") ═══════════════ -->
+    <div class="screen" id="sc-clarify">
+      <div id="stakes-banner" style="margin-bottom:14px"></div>
+      <div style="margin-bottom:17px">
+        <div style="font-size:22px;font-weight:700;margin-bottom:4px" id="clarify-title">Let me check I understood</div>
+        <div style="font-size:13px;color:var(--tx3)" id="clarify-sub">This takes less than a minute and helps get it right the first time.</div>
+      </div>
+
+      <!-- Skip all — FIX #4: at the TOP, not bottom -->
+      <div id="skip-top-bar" style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:10px 14px;background:var(--surf2);border-radius:8px;border:1px solid var(--bdr);">
+        <span style="font-size:12.5px;color:var(--tx2);flex:1;">Don't want to answer questions? That's fine.</span>
+        <button class="btn-o" onclick="goStep(3)" style="font-size:12px;padding:6px 14px;">Skip all — just do it →</button>
+      </div>
+
+      <div class="interp-card" id="interp-card">
+        <div class="interp-hd"><div class="interp-ico">💬</div><div><div style="font-size:14px;font-weight:700" id="interp-title">Here is what will be done</div><div style="font-size:12px;color:var(--tx3)">If something is wrong, add a note in the text box below.</div></div></div>
+        <div class="interp-quote" id="interp-quote"></div>
+        <div class="assm-lbl">Things I'm guessing:</div>
+        <div class="assm-row" id="assm-row" style="flex-direction:column;gap:3px;"></div>
+      </div>
+
+      <div id="questions-area"></div>
+
+      <div class="skip-warn" id="skip-warn">
+        <div class="sw-title">&#9888; You skipped some questions</div>
+        <div class="sw-body" id="skip-warn-body">Claude will clearly mark any guesses in the result so you can check them.</div>
+        <div class="sw-opts">
+          <button class="sw-btn assume" onclick="this.classList.toggle('chosen')">Let Claude guess<span class="sw-sub">It will show every guess so you can check</span></button>
+          <button class="sw-btn blank" onclick="this.classList.toggle('chosen')">Leave blanks<span class="sw-sub">Claude skips what it's unsure about</span></button>
+        </div>
+      </div>
+
+      <div style="margin-top:16px;margin-bottom:12px;">
+        <div style="font-size:12px;font-weight:600;color:var(--tx3);margin-bottom:6px;">Anything you want to add before I start?</div>
+        <textarea class="inp" id="extra-details" rows="2" oninput="onExtraDetailsInput()" placeholder="e.g. Please also keep the summary under 3 lines. Make it suitable for UK English." ></textarea>
+      </div>
+      <div id="review-needed-banner" style="display:none;background:var(--warnL);border:1.5px solid var(--warnB);border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:12.5px;color:var(--warn);">
+        &#9888; You made changes — click <strong>&#8635; Review updates</strong> first before proceeding.
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;margin-top:4px;flex-wrap:wrap">
+        <button class="btn-p" id="looks-good-btn" onclick="handleLooksGood()">Run Next →</button>
+        <button class="btn-o" id="review-again-btn" style="display:none" onclick="doReviewAgain()">&#8635; Review updates</button>
+        <button class="btn-ghost" onclick="goStep(1)">← Back to editing</button>
+      </div>
+    </div>
+
+    <!-- ═══════════════ SCREEN 3: WORKING (was "Running") — FIX #5: plain language ═══════════════ -->
+    <div class="screen" id="sc-running">
+      <div class="run-center">
+        <div class="spinner"></div>
+        <div style="max-width:440px;text-align:center">
+          <div class="run-title" id="run-title">Claude is <span>working on your request</span></div>
+          <div style="font-size:13px;color:var(--tx3);margin-top:6px;line-height:1.65" id="run-sub">
+            Using what you confirmed. This usually takes 15–30 seconds.
+          </div>
+        </div>
+        <div style="width:340px;background:var(--surf2);border:1px solid var(--bdr);border-radius:12px;padding:16px 18px;text-align:left">
+          <div style="font-size:11.5px;font-weight:600;color:var(--tx3);margin-bottom:10px;letter-spacing:.5px;text-transform:uppercase">Progress</div>
+          <div class="rs" id="rs1">◦ Reading your request and answers</div>
+          <div class="rs" id="rs2">◦ Applying your rules</div>
+          <div class="rs" id="rs3">◦ Writing the result piece by piece</div>
+          <div class="rs" id="rs4">◦ Checking for anything uncertain</div>
+          <div class="rs" id="rs5">◦ Preparing your review</div>
+        </div>
+        <div style="font-size:12px;color:var(--tx3);max-width:360px;text-align:center;line-height:1.6">
+          Next, you'll be able to <strong style="color:var(--tx2)">read each section</strong>, see where Claude was unsure, edit anything, and lock the parts you're happy with.
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════ SCREEN 4: RESULTS (was "Output") ═══════════════ -->
+    <div class="screen" id="sc-output">
+      <div id="output-content"></div>
+    </div>
+
+  </div>
+</main>
+
+<!-- RIGHT PANEL -->
+<aside class="rpanel" id="rpanel"></aside>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════
+   CASE DATA — 3 complete demo flows
+   ═══════════════════════════════════════════════ */
+const CASES = {
+  merge: {
+    label: 'Case 1: Merge resumes',
+    stakes: 'med',
+    stakesLabel: '&#9650; Medium',
+    stakesClass: 'tag-medium',
+    model: 'sonnet46',
+    prompt: "I have two resumes. The first one is mine with all my real experience. The second one belongs to a friend who successfully got a PM role — their resume is really well written.\n\nI want Claude to rewrite my resume using the writing style, sentence structure, and formatting of my friend's resume. But it must keep my actual experience — don't add anything I didn't do.\n\nThe role I'm applying for is Product Manager.",
+    goal: "Rewrite my resume using the writing style, sentence structure, and formatting of my friend's resume. Keep all my actual experience unchanged — do not add or fabricate any details.",
+    ctx: "Two resumes attached:\n1. My resume — source of all factual content (experience, education, skills)\n2. Friend's resume — use as style reference only (sentence structure, formatting, tone)\n\nTarget role: Product Manager",
+    role: "Act as a top-tier resume and interview specialist, drawing on best practices of leading product-focused companies.",
+    con: "1. Do NOT add experience I don't have — edit existing details only.\n2. Do NOT introduce grammatical errors.\n3. Keep the same overall length as my original resume.\n4. Preserve my contact details exactly.",
+    fmt: "Same format as the second resume (the friend's). One page maximum.",
+    files: ['my_resume.pdf', 'friends_resume.pdf'],
+    interpretation: "Take your resume and rewrite it to match how your friend's resume reads — same sentence style, same formatting — but only using your real experience. You're applying for a PM role, so I'll emphasise relevant PM skills from what you've actually done.",
+    assumptions: [
+      {text: 'One-page format', risk: false},
+      {text: 'PDF output', risk: false},
+      {text: 'English language', risk: false},
+      {text: "Friend's resume = style only, not content", risk: true,
+       q: "Should I treat your friend's resume as style reference only — not copy any of their actual content?",
+       why: "This protects your authenticity. Getting it wrong could add fabricated experience to your resume.",
+       opts: ["Yes, style only", "Some content is fine to adapt", "I'll clarify below"]}
+    ],
+    questions: [
+      {id:'q1', label:'Key question', q:'Which parts of your experience are most relevant to Product Management?', why:'So I emphasise the right things when rewriting.', opts:['All of it — I\'m already in PM','Focus on leadership and strategy','Focus on technical and data skills']},
+      {id:'q2', label:'Helpful to know', q:'Should I match the exact section order of your friend\'s resume, or keep your current order?', why:'The structure might not suit your experience.', opts:['Match my friend\'s order exactly','Keep my current order','Reorder to highlight strengths']}
+    ],
+    outputs: [
+      {title:'Rewritten Resume', badge:'bv', badgeText:'&#10003; Matches your experience', txt:'<strong>Your resume — rewritten in friend\'s style</strong><br><br><strong>Professional Summary</strong><br>Product-minded professional with 4 years of cross-functional experience driving user-facing features from concept to delivery. <span class="assm-hl" data-tip="Adapted from your friend\'s opening style — shortened from 3 sentences to 2 for impact.">Skilled at translating business needs into actionable product requirements</span>, with a track record of shipping features that improved engagement metrics by 15–25%.<br><br><strong>Experience</strong><br><strong>Associate Product Manager</strong> — TechCorp (2022–present)<br>• Led discovery and scoping for a dashboard redesign that reduced support tickets by 30%<br>• <span class="assm-hl" data-tip="Kept your original metric. Friend\'s resume used action-first sentence structure which I\'ve applied here.">Partnered with engineering to ship 3 features in Q4, each within 2-week sprints</span><br>• Ran weekly stakeholder syncs with design, engineering, and marketing leads<br><br><strong>Business Analyst</strong> — DataCo (2020–2022)<br>• Built reporting dashboards tracking revenue and churn across 4 product lines<br>• Documented requirements for an internal tool used by 200+ employees<br>• Conducted 15+ user interviews to inform a product pivot that retained 85% of at-risk accounts', reasonKey:'r1'},
+      {title:'Style Comparison Notes', badge:'br', badgeText:'&#9888; Check — 2 style choices', txt:'<strong>What I changed and why</strong><br><br>1. <strong>Sentence structure:</strong> Your friend uses short, action-first bullet points (verb → result → metric). I\'ve applied this pattern throughout.<br><br>2. <strong>Professional summary:</strong> Your original was 4 sentences. Friend\'s was 2 punchy lines. I condensed yours to 2.<br><br>3. <span class="assm-hl" data-tip="Your friend\'s resume doesn\'t include a skills section — it weaves skills into bullet points. I did the same. If you want a separate skills section, let me know.">Removed standalone skills section</span> — following friend\'s approach of weaving skills into experience bullets.<br><br>4. <strong>Formatting:</strong> Matched friend\'s use of bold company names, em-dash date format, and left-aligned layout.', reasonKey:'r2'}
+    ],
+    reasons: {
+      r1: '<strong>Why I\'m confident:</strong> All experience details come directly from your resume. No facts were added. Sentence structure and formatting patterns come from your friend\'s resume. Metrics (30%, 15–25%, 85%) are from your original.',
+      r2: '<strong>Worth checking:</strong> Removing the skills section is a style choice from your friend\'s resume. If your target company uses ATS scanning, a standalone skills section might be better for keyword matching. Also verify the condensed summary still captures what you want to lead with.'
+    }
+  },
+
+};
+
+let currentCase = 'merge';
+let stakes = 'med';
+let locked = new Set();
+let model = 'sonnet46';
+let originalPromptText = '';
+let currentRules = { role: '', con: '' };
+let currentFiles = [];
+
+/* ═══════════════ PASTE ZONE — FIX #1 ═══════════════ */
+function openPasteInput() {
+  document.getElementById('pz-empty').style.display = 'none';
+  document.getElementById('pz-input').style.display = 'block';
+  document.getElementById('pz-text').value = '';
+  document.getElementById('pz-text').focus();
+}
+function closePasteInput() {
+  document.getElementById('pz-input').style.display = 'none';
+  document.getElementById('pz-empty').style.display = 'flex';
+}
+function loadDemo() {
+  openPasteInput();
+  document.getElementById('pz-text').value = CASES[currentCase].prompt;
+}
+
+function startParsing() {
+  originalPromptText = (document.getElementById('pz-text').value || '').trim();
+  document.getElementById('pz-input').style.display = 'none';
+  const parsing = document.getElementById('pz-parsing');
+  parsing.style.display = 'block';
+  const steps = ['ps1','ps2','ps3','ps4'];
+  const labels = ['Understanding what you need','Identifying your files and references','Noting your rules and preferences','Choosing the right approach'];
+  let i = 0;
+  const iv = setInterval(() => {
+    if (i > 0) { const p = document.getElementById(steps[i-1]); if(p){p.classList.remove('active');p.classList.add('done');p.textContent='✓ '+labels[i-1];} }
+    if (i < steps.length) { const c = document.getElementById(steps[i]); if(c){c.classList.add('active');c.textContent='⟳ '+labels[i]+'…';} i++; }
+    else { clearInterval(iv); setTimeout(doUnderstand, 300); }
+  }, 400);
+}
+
+function fillParsed() {
+  const c = CASES[currentCase];
+  document.getElementById('pz-parsing').style.display = 'none';
+  document.getElementById('pz-banner').style.display = 'block';
+  document.getElementById('or-div').style.display = 'none';
+  document.getElementById('pb-detail').textContent = (c.files.length ? c.files.length + ' files detected · ' : '') + 'Fields filled from your description';
+
+  // Fill fields
+  const fieldMap = {goal: c.goal, ctx: c.ctx, fmt: c.fmt, role: c.role, con: c.con};
+  Object.entries(fieldMap).forEach(([key, val]) => {
+    const inp = document.getElementById('inp-'+key);
+    const badge = document.getElementById('auto-'+key);
+    const body = document.getElementById('body-'+key);
+    const card = document.getElementById('bc-'+key);
+    if(inp && val) { inp.value = val; inp.classList.add('auto-filled'); }
+    if(badge) badge.style.display = 'inline-flex';
+    if(body) body.style.display = 'block';
+    if(card) { card.classList.add('open','parsed-highlight'); }
+  });
+
+  // Stakes
+  document.getElementById('auto-stk').style.display = 'inline-flex';
+  document.getElementById('body-stk').style.display = 'block';
+  document.getElementById('bc-stk').classList.add('open','parsed-highlight');
+  const skEls = document.querySelectorAll('.sk');
+  const skMap = {low:0,med:1,high:2};
+  skEls[skMap[c.stakes]].click();
+
+  // Model
+  document.getElementById('auto-model').style.display = 'inline-flex';
+
+  // Files
+  if (c.files.length) {
+    const fc = document.getElementById('file-chips');
+    fc.innerHTML = '';
+    c.files.forEach(f => {
+      const chip = document.createElement('span');
+      chip.className = 'file-chip';
+      chip.innerHTML = '📎 '+f+' <span class="fc-x" onclick="this.parentElement.remove()">×</span>';
+      fc.appendChild(chip);
+    });
+    const addBtn = document.createElement('button');
+    addBtn.className = 'add-file-btn';
+    addBtn.onclick = addFile;
+    addBtn.textContent = '+ Attach file';
+    fc.appendChild(addBtn);
+  }
+
+  setTimeout(() => { document.getElementById('bc-goal').scrollIntoView({behavior:'smooth',block:'center'}); }, 200);
+}
+
+/* ═══════════════ API: PARSE (Screen 1 → 2) ═══════════════ */
+async function doUnderstand() {
+  try {
+    const res = await fetch('/api/claude-understand', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({text: originalPromptText})
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    // Attach files from paste-zone chip list
+    const pzFiles = Array.from(document.querySelectorAll('#pz-file-list .file-chip'))
+      .map(el => el.textContent.replace('📎 ','').replace('×','').trim()).filter(Boolean);
+    data.files = pzFiles;
+    // Populate stakes display metadata
+    const sm = {
+      low:{stakesLabel:'&#9998; Quick draft',stakesClass:'tag-low'},
+      med:{stakesLabel:'&#9650; Medium',stakesClass:'tag-medium'},
+      high:{stakesLabel:'&#9888; Must be right',stakesClass:'tag-high'}
+    };
+    if (sm[data.stakes]) { data.stakesLabel = sm[data.stakes].stakesLabel; data.stakesClass = sm[data.stakes].stakesClass; }
+    // Keep demo outputs as fallback for generate step
+    data.outputs = data.outputs || CASES.merge.outputs;
+    data.reasons = data.reasons || CASES.merge.reasons;
+    Object.assign(CASES.merge, data);
+    fillParsed();
+  } catch(e) {
+    console.warn('Parse API unavailable, using demo data:', e.message);
+    fillParsed();
+  }
+}
+
+/* ═══════════════ API: GENERATE (Screen 3 → 4) ═══════════════ */
+async function doGenerate() {
+  // Capture rules and files for right panel
+  currentRules = {
+    role: (document.getElementById('inp-role') || {}).value || '',
+    con: (document.getElementById('inp-con') || {}).value || ''
+  };
+  currentFiles = [];
+  document.querySelectorAll('#file-chips .file-chip').forEach(el => {
+    const name = el.textContent.replace('📎 ','').replace('×','').trim();
+    if (name) currentFiles.push(name);
+  });
+  document.querySelectorAll('#pz-file-list .file-chip').forEach(el => {
+    const name = el.textContent.replace('📎 ','').replace('×','').trim();
+    if (name && !currentFiles.includes(name)) currentFiles.push(name);
+  });
+  (CASES.merge.files || []).forEach(f => { if (f && !currentFiles.includes(f)) currentFiles.push(f); });
+
+  const answers = [];
+  document.querySelectorAll('.qcard:not(.skipped)').forEach(card => {
+    const q = card.querySelector('.qcard-q');
+    const sel = card.querySelector('.q-opt.sel');
+    if (q && sel) answers.push({question: q.textContent.trim(), answer: sel.textContent.trim()});
+  });
+
+  const c = CASES.merge;
+  try {
+    const res = await fetch('/api/claude-generate', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        goal: c.goal, ctx: c.ctx, fmt: c.fmt, role: c.role, con: c.con,
+        stakes: c.stakes, model: model, interpretation: c.interpretation,
+        answers, files: currentFiles
+      })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (!data.error) {
+      if (data.outputs && data.outputs.length) CASES.merge.outputs = data.outputs;
+      if (data.reasons) CASES.merge.reasons = data.reasons;
+      if (data.references) {
+        data.references.forEach(r => {
+          if (r && r.name && !currentFiles.includes(r.name)) currentFiles.push(r.name);
+        });
+      }
+    }
+  } catch(e) {
+    console.warn('Generate API unavailable, using demo data:', e.message);
+  }
+}
+
+/* ═══════════════ RIGHT PANEL: RULES + REFERENCES ═══════════════ */
+function renderOutputRightPanel() {
+  const rpanel = document.getElementById('rpanel');
+  if (!rpanel) return;
+  let extra = '';
+  const role = (currentRules && currentRules.role) || '';
+  const con = (currentRules && currentRules.con) || '';
+  if (role || con) {
+    extra += '<div class="rp-hd" style="margin-top:4px">Your rules</div><div class="rp-sec">';
+    if (role) extra += '<div class="rp-card"><strong>Role &amp; instructions</strong><div style="margin-top:3px">' + role.replace(/\n/g,'<br>') + '</div></div>';
+    if (con) extra += '<div class="rp-card" style="border-color:var(--dangerB);background:var(--dangerL)"><strong style="color:var(--danger)">Must NOT do</strong><div style="margin-top:3px">' + con.replace(/\n/g,'<br>') + '</div></div>';
+    extra += '</div>';
+  }
+  if (currentFiles && currentFiles.length) {
+    extra += '<div class="rp-hd" style="margin-top:4px">References used</div><div class="rp-sec">';
+    extra += currentFiles.map(f => '<div class="rp-card" style="display:flex;align-items:center;gap:8px"><span style="font-size:15px">📎</span><span style="font-size:12px">' + f + '</span></div>').join('');
+    extra += '</div>';
+  }
+  if (extra) rpanel.innerHTML += extra;
+}
+
+
+/* ═══════════════ TOKEN % ESTIMATE ═══════════════ */
+function updateTokenPct() {
+  // Base % by model, scaled by stakes level
+  const modelBase = {haiku:5, sonnet45:10, sonnet46:15, opus:25};
+  const stakesMult = {low:0.6, med:1.0, high:1.7};
+  const base = modelBase[model] || 15;
+  const mult = stakesMult[stakes] || 1.0;
+  const pct = Math.round(base * mult);
+  const el = document.getElementById('tok-est');
+  if (el) el.textContent = '~' + pct + '% of limit';
+}
+
+/* ═══════════════ BUILDER HELPERS ═══════════════ */
+function toggleBC(key) {
+  const body = document.getElementById('body-'+key);
+  const card = document.getElementById('bc-'+key);
+  if (!body) return;
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : 'block';
+  if (card) card.classList.toggle('open', !open);
+}
+function setModel(m, el) {
+  model = m;
+  document.querySelectorAll('.mod-card').forEach(c => c.classList.remove('sel'));
+  el.classList.add('sel');
+  const tokMap = {haiku:'~500 tokens',sonnet46:'~1,200 tokens',sonnet45:'~950 tokens',opus:'~2,500 tokens'};
+  const labelMap = {haiku:'Haiku 4.5',sonnet46:'Sonnet 4.6',sonnet45:'Sonnet 4.5',opus:'Opus 4.6'};
+  document.getElementById('tok-est').textContent = tokMap[m]||'~1,200 tokens';
+  document.getElementById('model-pill').textContent = labelMap[m]||m;
+  updateTokenPct();
+}
+function setSk(level, el) {
+  stakes = level;
+  document.querySelectorAll('.sk').forEach(s => s.className='sk');
+  const selClass = {low:'sel-low',med:'sel-med',high:'sel-high'};
+  el.classList.add(selClass[level]);
+  const labels = {low:'&#9998; Quick draft',med:'&#9650; Medium priority',high:'&#9888; High priority'};
+  const cls = {low:'tag-low',med:'tag-medium',high:'tag-high'};
+  const d = document.getElementById('stakes-display');
+  d.innerHTML=labels[level]; d.className='stakes-tag '+cls[level];
+  const note = document.getElementById('stakes-note');
+  const notes = {
+    low: {text:'Quick draft: Claude will get started right away with minimal checking.', c:'var(--sLow)', bg:'var(--sLowL)', b:'var(--sLowB)'},
+    med: {text:'Medium priority: Claude will show key assumptions and ask one or two questions.', c:'var(--sMed)', bg:'var(--sMedL)', b:'var(--sMedB)'},
+    high: {text:'&#9888; High priority: Claude will ask more questions, flag every guess, and mark anything uncertain in the output so you can check it.', c:'var(--sHigh)', bg:'var(--sHighL)', b:'var(--sHighB)'}
+  };
+  note.innerHTML = notes[level].text;
+  note.style.color = notes[level].c;
+  note.style.background = notes[level].bg;
+  note.style.borderColor = notes[level].b;
+  note.style.display = 'block';
+  updateTokenPct();
+}
+function setRole(el, text) {
+  document.querySelectorAll('.role-chip').forEach(c => c.classList.remove('sel'));
+  el.classList.add('sel');
+  document.getElementById('inp-role').value = text;
+}
+function handlePzFiles(input) {
+  const list = document.getElementById('pz-file-list');
+  if (!list) return;
+  Array.from(input.files).forEach(file => {
+    const chip = document.createElement('span');
+    chip.className = 'file-chip';
+    chip.innerHTML = '📎 ' + file.name + ' <span class="fc-x" onclick="this.parentElement.remove()">×</span>';
+    list.appendChild(chip);
+  });
+  input.value = '';
+}
+function handleBgFiles(input) {
+  const fc = document.getElementById('file-chips');
+  const addBtn = fc.querySelector('.add-file-btn');
+  Array.from(input.files).forEach(file => {
+    const chip = document.createElement('span');
+    chip.className = 'file-chip';
+    chip.innerHTML = '📎 ' + file.name + ' <span class="fc-x" onclick="this.parentElement.remove()">×</span>';
+    fc.insertBefore(chip, addBtn);
+  });
+  input.value = '';
+}
+function addFile() {
+  document.getElementById('bg-file-input').click();
+}
+function togglePhases(btn) {
+  const isOn = btn.classList.contains('on');
+  btn.setAttribute('aria-pressed', isOn ? 'false' : 'true');
+  btn.classList.toggle('off', isOn);
+  btn.classList.toggle('on', !isOn);
+  document.getElementById('phase-section').style.display = isOn ? 'none' : 'block';
+}
+
+/* ═══════════════ CLARIFY — FIX #2, #4: stakes-aware + skip at top ═══════════════ */
+function renderClarify() {
+  chipsEdited = false;
+  // Clear extra-details textarea on each entry to this screen
+  const edInp = document.getElementById('extra-details');
+  if (edInp) edInp.value = '';
+  // reset gate on each clarify render — check happens on click only
+  const c = CASES[currentCase];
+  const banner = document.getElementById('stakes-banner');
+  const skipBar = document.getElementById('skip-top-bar');
+  const interpCard = document.getElementById('interp-card');
+  const qArea = document.getElementById('questions-area');
+
+  // Interpretation
+  // Render interpretation as bullet points by splitting on sentences
+  const sentences = c.interpretation.split(/(?<=[.!?])\s+/).filter(s => s.trim());
+  const bulletHTML = '<ul style="list-style:none;padding:0;margin:0">' +
+    sentences.map(s => '<li style="display:flex;gap:8px;margin-bottom:7px;font-style:normal"><span style="color:var(--cl);font-weight:700;flex-shrink:0;margin-top:2px">•</span><span>' + s + '</span></li>').join('') +
+    '</ul>';
+  document.getElementById('interp-quote').innerHTML = bulletHTML;
+  const assm = document.getElementById('assm-row');
+  assm.innerHTML = '';
+  c.assumptions.forEach(a => {
+    const item = document.createElement('div');
+    item.style.cssText = 'display:flex;gap:7px;align-items:flex-start;font-size:12.5px;color:var(--tx2);line-height:1.5;';
+    const icon = a.risk ? '⚠' : '•';
+    const iconColor = a.risk ? 'var(--danger)' : 'var(--cl)';
+    const suffix = a.risk ? ' <span style="font-size:11px;color:var(--danger);font-style:italic">(please verify)</span>' : '';
+    item.innerHTML = '<span style="color:' + iconColor + ';font-weight:700;flex-shrink:0;margin-top:1px">' + icon + '</span><span>' + a.text + suffix + '</span>';
+    assm.appendChild(item);
+  });
+
+  // Questions
+  qArea.innerHTML = '';
+  if (c.questions.length > 0) {
+    c.questions.forEach((q, idx) => {
+      const card = document.createElement('div');
+      card.className = 'qcard';
+      card.id = q.id;
+      card.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <div class="qcard-num" style="flex:1">${q.label}</div>
+          <button class="q-skip-inline" onclick="skipQ('${q.id}',this)">Skip this</button>
+        </div>
+        <div class="qcard-q">${q.q}</div>
+        <div class="qcard-why">→ ${q.why}</div>
+        <div class="q-opts">${q.opts.map((o,i) => `<span class="q-opt${i===0?' sel':''}" onclick="selQ(this,'${q.id}')">${o}</span>`).join('')}</div>
+      `;
+      qArea.appendChild(card);
+    });
+  }
+  // Auto-generate question cards for risky assumptions that have a question defined
+  c.assumptions.filter(a => a.risk && a.q).forEach((a, idx) => {
+    const qId = 'qa-assm-' + idx;
+    const card = document.createElement('div');
+    card.className = 'qcard';
+    card.id = qId;
+    card.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <div class="qcard-num" style="flex:1;color:var(--danger)">⚠ Confirming my assumption</div>
+        <button class="q-skip-inline" onclick="skipQ('${qId}',this)">Skip this</button>
+      </div>
+      <div class="qcard-q">${a.q}</div>
+      <div class="qcard-why">→ ${a.why}</div>
+      <div class="q-opts">${a.opts.map((o,i) => `<span class="q-opt${i===0?' sel':''}" onclick="selQ(this,'${qId}')">${o}</span>`).join('')}</div>
+    `;
+    qArea.appendChild(card);
+  });
+
+  // FIX #2: Separate visual treatment per stake level
+  if (stakes === 'low') {
+    banner.innerHTML = `<div style="background:var(--sLowL);border:1.5px solid var(--sLowB);border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:12px;">
+      <span style="font-size:20px">&#9998;</span>
+      <div style="flex:1"><div style="font-size:13.5px;font-weight:600;color:var(--sLow);margin-bottom:2px">Quick draft — ready to go</div>
+      <div style="font-size:12px;color:var(--tx2)">This is low-stakes, so Claude will just get started. You can fix things in the result.</div></div>
+      <button class="btn-p" onclick="goStep(3)" style="font-size:13px;padding:9px 18px">Just do it →</button>
+    </div>`;
+    document.getElementById('clarify-title').textContent = 'Ready to go';
+    document.getElementById('clarify-sub').textContent = 'Quick draft — Claude will make reasonable guesses and get started.';
+    interpCard.style.display = 'block';
+    skipBar.style.display = 'none';
+    qArea.querySelectorAll('.qcard').forEach(c => c.style.display = 'none');
+  } else if (stakes === 'med') {
+    banner.innerHTML = `<div style="background:var(--sMedL);border:1.5px solid var(--sMedB);border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:12px;">
+      <span style="font-size:20px">&#9650;</span>
+      <div style="flex:1"><div style="font-size:13.5px;font-weight:600;color:var(--sMed);margin-bottom:2px">Medium priority — a quick check will help</div>
+      <div style="font-size:12px;color:var(--tx2)">Answer what you can. Skip anything you're not sure about.</div></div>
+    </div>`;
+    document.getElementById('clarify-title').textContent = 'Let me check I understood';
+    document.getElementById('clarify-sub').textContent = 'A few things to confirm before I start.';
+    interpCard.style.display = 'block';
+    skipBar.style.display = 'flex';
+  } else {
+    banner.innerHTML = `<div style="background:var(--sHighL);border:2px solid var(--sHighB);border-radius:10px;padding:14px 16px;display:flex;align-items:flex-start;gap:12px;">
+      <span style="font-size:22px">&#9888;</span>
+      <div style="flex:1"><div style="font-size:14px;font-weight:700;color:var(--sHigh);margin-bottom:3px">High priority — please review carefully</div>
+      <div style="font-size:12.5px;color:var(--tx2);line-height:1.6">Since this is high-stakes, I have more questions. Answering them now saves you from finding mistakes in the final result. Anything you skip, I'll clearly mark as a guess.</div></div>
+    </div>`;
+    document.getElementById('clarify-title').textContent = 'Important — let me confirm everything';
+    document.getElementById('clarify-sub').textContent = 'For high-stakes work, getting this right up front saves time later.';
+    interpCard.style.display = 'block';
+    skipBar.style.display = 'flex';
+  }
+}
+
+
+/* ═══════════════ CHIP INLINE EDITING ═══════════════ */
+function showReviewGate() {
+  chipsEdited = true;
+  const banner = document.getElementById('review-needed-banner');
+  const rvBtn = document.getElementById('review-again-btn');
+  if(banner) { banner.style.display = 'block'; banner.scrollIntoView({behavior:'smooth',block:'nearest'}); }
+  if(rvBtn) rvBtn.style.display = 'inline-flex';
+}
+let chipsEdited = false;
+function startChipEdit(chip, isRisk) {
+  const current = chip.dataset.original || chip.textContent.replace('⚠ ','').replace('✎','').trim();
+  const inp = document.createElement('input');
+  inp.value = current;
+  inp.style.cssText = 'border:1.5px solid var(--cl);border-radius:4px;padding:2px 7px;font-family:inherit;font-size:12px;background:var(--surf);color:var(--tx);outline:none;width:auto;min-width:120px;';
+  chip.innerHTML = '';
+  chip.appendChild(inp);
+  inp.focus();
+  inp.select();
+  function save() {
+    const val = inp.value.trim() || current;
+    chip.dataset.original = val;
+    chip.innerHTML = (isRisk ? '⚠ ' : '') + val + ' <span style="font-size:10px;opacity:.7">✎</span>';
+    chip.onclick = () => startChipEdit(chip, isRisk);
+    if (val !== current) {
+      chip.style.background = 'var(--purpleL)';
+      chip.style.borderColor = 'var(--purpleB)';
+      chip.style.color = 'var(--purple)';
+      chipsEdited = true;
+      showReviewGate();
+    }
+  }
+  inp.addEventListener('blur', save);
+  inp.addEventListener('keydown', e => { if(e.key==='Enter') { e.preventDefault(); save(); } if(e.key==='Escape') { inp.value=current; save(); } });
+}
+function handleLooksGood() {
+  if (chipsEdited) {
+    // Show the warning and Review button; don't proceed
+    const banner = document.getElementById('review-needed-banner');
+    const rvBtn = document.getElementById('review-again-btn');
+    if(banner) { banner.style.display = 'block'; banner.scrollIntoView({behavior:'smooth',block:'nearest'}); }
+    if(rvBtn) rvBtn.style.display = 'inline-flex';
+    return;
+  }
+  // Clear extra-details textarea and reset all bullet modifications before proceeding
+  const ed = document.getElementById('extra-details');
+  if (ed) ed.value = '';
+  const ul = document.querySelector('#interp-quote ul');
+  if (ul) {
+    const prev = ul.querySelector('.extra-detail-item');
+    if (prev) prev.remove();
+    ul.querySelectorAll('li[data-orig]').forEach(li => {
+      const span = li.querySelector('span:last-child');
+      if (span) span.innerHTML = li.dataset.orig;
+      li.removeAttribute('data-orig');
+    });
+  }
+  goStep(3);
+}
+async function doReviewAgain() {
+  chipsEdited = false;
+  const banner = document.getElementById('review-needed-banner');
+  const rvBtn = document.getElementById('review-again-btn');
+  const extra = (document.getElementById('extra-details') || {}).value || '';
+  if (extra.trim() && originalPromptText) {
+    const origLabel = rvBtn ? rvBtn.innerHTML : '';
+    if (rvBtn) { rvBtn.innerHTML = '⟳ Re-reading…'; rvBtn.disabled = true; }
+    try {
+      const combined = originalPromptText + '\n\nAdditional context: ' + extra.trim();
+      const res = await fetch('/api/claude-understand', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({text: combined})
+      });
+      const data = await res.json();
+      if (!data.error) {
+        const sm = {low:{stakesLabel:'&#9998; Quick draft',stakesClass:'tag-low'},med:{stakesLabel:'&#9650; Medium',stakesClass:'tag-medium'},high:{stakesLabel:'&#9888; Must be right',stakesClass:'tag-high'}};
+        if (sm[data.stakes]) { data.stakesLabel = sm[data.stakes].stakesLabel; data.stakesClass = sm[data.stakes].stakesClass; }
+        data.outputs = CASES.merge.outputs; data.reasons = CASES.merge.reasons;
+        Object.assign(CASES.merge, data);
+        renderClarify();
+      }
+    } catch(e) { console.warn('Re-parse failed:', e.message); }
+    if (rvBtn) { rvBtn.disabled = false; rvBtn.innerHTML = origLabel; }
+  }
+  if(banner) banner.style.display = 'none';
+  if(rvBtn) {
+    const orig = rvBtn.innerHTML;
+    rvBtn.innerHTML = '✓ Reviewed — you can proceed';
+    rvBtn.style.background = 'var(--okL)';
+    rvBtn.style.borderColor = 'var(--okB)';
+    rvBtn.style.color = 'var(--ok)';
+    setTimeout(()=>{ rvBtn.style.display='none'; rvBtn.innerHTML=orig; rvBtn.style.background=''; rvBtn.style.borderColor=''; rvBtn.style.color=''; }, 1800);
+  }
+}
+function onExtraDetailsInput() {
+  showReviewGate(); // typing triggers review gate
+  const val = (document.getElementById('extra-details') || {}).value || '';
+  const ul = document.querySelector('#interp-quote ul');
+  if (!ul) return;
+
+  // Restore any previously modified bullets to their originals
+  ul.querySelectorAll('li[data-orig]').forEach(li => {
+    const span = li.querySelector('span:last-child');
+    if (span) span.innerHTML = li.dataset.orig;
+    li.removeAttribute('data-orig');
+  });
+  // Remove any extra-detail new bullet
+  const prev = ul.querySelector('.extra-detail-item');
+  if (prev) prev.remove();
+
+  if (!val.trim()) return;
+
+  // Tokenise input for keyword overlap matching
+  const inputLower = val.trim().toLowerCase().replace(/[^\w\s]/g, '');
+  const inputWords = inputLower.split(/\s+/).filter(w => w.length > 2);
+
+  // Find best-matching existing bullet by keyword overlap
+  const regularLis = Array.from(ul.querySelectorAll('li:not(.extra-detail-item)'));
+  let bestLi = null, bestScore = 0;
+  regularLis.forEach(li => {
+    const liText = (li.querySelector('span:last-child') || li).textContent.toLowerCase();
+    const score = inputWords.filter(w => liText.includes(w)).length;
+    if (score > bestScore) { bestScore = score; bestLi = li; }
+  });
+
+  if (bestScore >= 1 && bestLi) {
+    // MODIFICATION: update the matching bullet in place
+    const span = bestLi.querySelector('span:last-child');
+    if (span) {
+      bestLi.dataset.orig = span.innerHTML; // store original for restore on clear
+      let text = span.innerHTML;
+
+      // Try smart seniority/role replacement e.g. "senior PM" → bold the upgrade inline
+      const seniorityMatch = val.trim().match(/\b(senior|junior|lead|principal|staff|mid-level|associate|executive|director)\b/i);
+      const roleMatch = val.trim().match(/\b(pm|product manager|designer|engineer|developer|manager|analyst)\b/i);
+
+      if (seniorityMatch && roleMatch) {
+        const roleWord = roleMatch[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const seniorityWord = seniorityMatch[0];
+        // Try to replace "a [role]" or standalone role word
+        const re = new RegExp('(\\ba\\s+)(' + roleWord + ')', 'i');
+        if (re.test(text)) {
+          text = text.replace(re, '$1<strong style="color:var(--tx)">' + seniorityWord + ' ' + roleMatch[0] + '</strong>');
+        } else {
+          const reSimple = new RegExp('\\b(' + roleWord + ')\\b', 'i');
+          text = text.replace(reSimple, '<strong style="color:var(--tx)">' + seniorityWord + ' $1</strong>');
+        }
+      } else {
+        // Generic: append a soft inline note
+        const note = val.trim().charAt(0).toUpperCase() + val.trim().slice(1);
+        text = text.replace(/\.$/, '') + ' <span style="color:var(--cl);font-size:12px;font-style:italic">(' + note + ').</span>';
+      }
+      span.innerHTML = text;
+    }
+  } else {
+    // NEW INFO: add a fresh natural bullet at the end
+    const newLi = document.createElement('li');
+    newLi.className = 'extra-detail-item';
+    newLi.style.cssText = 'display:flex;gap:8px;margin-bottom:7px;font-style:normal';
+
+    let naturalText = val.trim();
+    if (!/[.!?]$/.test(naturalText)) naturalText += '.';
+    naturalText = naturalText.charAt(0).toUpperCase() + naturalText.slice(1);
+
+    // Map common shorthand phrases to natural Claude statements
+    const lower = val.trim().toLowerCase();
+    if (/indian english/.test(lower)) naturalText = "I'll write in Indian English.";
+    else if (/uk english|british english/.test(lower)) naturalText = "I'll write in UK English.";
+    else if (/american english|us english/.test(lower)) naturalText = "I'll write in American English.";
+    else if (/australian english/.test(lower)) naturalText = "I'll write in Australian English.";
+
+    newLi.innerHTML = '<span style="color:var(--cl);font-weight:700;flex-shrink:0;margin-top:2px">•</span><span>' + naturalText + '</span>';
+    ul.appendChild(newLi);
+  }
+}
+
+function selQ(el, cardId) {
+  document.querySelectorAll('#'+cardId+' .q-opt').forEach(o => o.classList.remove('sel'));
+  el.classList.add('sel');
+}
+function skipQ(cardId, btn) {
+  const card = document.getElementById(cardId);
+  if (card.classList.contains('skipped')) {
+    card.classList.remove('skipped');
+    btn.textContent = 'Skip this';
+  } else {
+    card.classList.add('skipped');
+    btn.textContent = 'Undo skip';
+    if (document.querySelectorAll('.qcard.skipped').length >= 1) document.getElementById('skip-warn').style.display='block';
+  }
+}
+
+/* ═══════════════ OUTPUT RENDERING ═══════════════ */
+function renderOutput() {
+  const c = CASES[currentCase];
+  const container = document.getElementById('output-content');
+  locked = new Set();
+
+  let html = '';
+
+  // Title area
+  html += `<div style="display:flex;align-items:center;gap:12px;margin-bottom:17px">
+    <div style="flex:1">
+      <div style="font-size:22px;font-weight:700;margin-bottom:3px">Your results — review before using</div>
+      <div style="font-size:12.5px;color:var(--tx3)">
+        Click status tags for details · Hover <span style="background:var(--blueL);border-bottom:2px solid #93C5FD;padding:0 4px;border-radius:2px">blue text</span> for Claude's notes · ✏ Edit inline · Lock &#128274; the parts you're happy with
+      </div>
+    </div>
+  </div>`;
+
+  // Screen-by-screen nav for multi-screen outputs (e.g. prototype)
+  if (c.screenByScreen) {
+    html += `<div style="background:var(--blueL);border:1.5px solid var(--blueB);border-radius:10px;padding:12px 16px;margin-bottom:14px;">
+      <div style="font-size:13px;font-weight:700;color:var(--blue);margin-bottom:6px;">&#128196; This task has ${c.outputs.length} screens — review each one</div>
+      <div style="font-size:12px;color:var(--tx2);margin-bottom:10px;">Accept each screen individually. Once all screens are accepted, Claude combines them into one working prototype file.</div>
+      <div class="screen-nav">
+        ${c.outputs.map((o,i) => `<button class="screen-nav-btn${i===0?' active':''}" onclick="scrollToScreen('os${i+1}',this)">${o.title}</button>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  // Output sections
+  c.outputs.forEach((out, idx) => {
+    const secId = 'os'+(idx+1);
+    const actsId = 'acts'+(idx+1);
+    const rId = 'r'+(idx+1);
+    html += `<div class="out-sec" id="${secId}">
+      <div class="os-hd">
+        <div class="os-title">${out.title}</div>
+        <div class="os-acts" id="${actsId}">
+          <span class="badge ${out.badge}" onclick="toggleR('${rId}')">${out.badgeText}</span>
+          <button class="btn-edit" onclick="startEdit('${secId}','${actsId}','${rId}')">✏ Edit</button>
+          <button class="btn-lock" onclick="lockSec('${secId}','${actsId}')">Accept &#128274;</button>
+        </div>
+      </div>
+      <div class="os-body"><div class="os-txt" id="txt${idx+1}">${out.txt}</div></div>
+      <div class="reason-panel" id="${rId}">${c.reasons[out.reasonKey]||''}</div>
+    </div>`;
+  });
+
+  // Refine panel
+  html += `<div class="refine-panel">
+    <div class="refine-panel-hd"><div class="rph-icon">✏️</div><div class="rph-text"><strong>Want changes?</strong><span>Lock what you're happy with, then describe what to change.</span></div></div>
+    <div class="refine-status" id="refine-status"><span class="unlock-pill">All sections unlocked</span></div>
+    <div class="refine-input-wrap">
+      <div class="refine-inp-lbl">What should Claude change?</div>
+      <textarea class="refine-inp" id="refine-textarea" oninput="updateRerunBtn()" placeholder="e.g. The professional summary should be more concise. Also move the skills section back — I want it separate."></textarea>
+      <div class="refine-footer">
+        <span class="refine-hint">&#128274; Locked sections will not be touched.</span>
+        <button class="btn-p" id="rerun-btn" onclick="startRerun()">Re-run unlocked sections →</button>
+        <button class="btn-o" id="done-export-btn" style="font-size:13px" onclick="showExport()">Done — export result</button>
+      </div>
+    </div>
+  </div>`;
+
+  container.innerHTML = html;
+}
+
+/* ═══════════════ NAVIGATION ═══════════════ */
+const PANELS = {
+  builder: `<div class="rp-hd">How this works</div><div class="rp-sec"><div class="rp-card"><strong>Step 1: Describe</strong>Tell Claude what you need. Paste a description or fill in the fields.</div><div class="rp-card"><strong>Step 2: Review</strong>Claude shows you what it understood. Correct anything before it starts.</div><div class="rp-card"><strong>Step 3: Results</strong>Review each section. Edit, lock what's good, and re-run the rest.</div></div>`,
+  clarify: `<div class="rp-hd">Why this step?</div><div class="rp-sec"><div class="rp-card"><strong>Catching mistakes now</strong>It's much faster to correct a misunderstanding before Claude writes the full result than after.</div><div class="rp-card"><strong>You're in control</strong>Skip any question. Claude will mark its guesses so you can check them later.</div></div>`,
+  running: `<div class="rp-hd">Working</div><div class="rp-sec"><div class="rp-card">Claude is writing your result. This usually takes 15–30 seconds.</div></div>`,
+  output: `<div class="rp-hd">Review guide</div><div class="rp-sec"><div class="rp-card"><strong>Status tags</strong>Click any coloured tag to see why Claude is confident or uncertain about that section.</div><div class="rp-card"><strong>Blue underlines</strong>Hover over blue-underlined text to see Claude's notes and assumptions.</div><div class="rp-card"><strong>Lock &#128274;</strong>When a section is right, lock it. Locked sections won't change if you re-run.</div><div class="rp-card"><strong>Edit ✏</strong>Click edit to change text directly. Save when done.</div><div class="rp-card"><strong>Unlock ✎</strong>Accidentally accepted a section? Click Unlock to re-open it.</div></div>
+<div class="rp-hd" style="margin-top:4px;">Claude's thinking flow</div>
+<div class="rp-sec">
+  <div style="font-size:11.5px;color:var(--tx3);margin-bottom:10px;line-height:1.5;">How Claude arrived at your result. Download as a reference.</div>
+  <div id="thinking-flow-content"></div>
+  <button onclick="downloadThinkingFlow()" style="margin-top:10px;width:100%;padding:8px 12px;border-radius:7px;border:1.5px solid var(--bdr2);background:var(--surf2);color:var(--tx2);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;" onmouseover="this.style.background='var(--okL)';this.style.borderColor='var(--okB)';this.style.color='var(--ok)'" onmouseout="this.style.background='var(--surf2)';this.style.borderColor='var(--bdr2)';this.style.color='var(--tx2)'">
+    &#11123; Download thinking flow
+  </button>
+</div>`
+};
+
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  const nm = 'sc-'+name;
+  const el = document.getElementById(nm);
+  if (el) el.classList.add('active');
+  document.getElementById('rpanel').innerHTML = PANELS[name]||PANELS.output;
+  updateStepBar(name);
+  if (name==='clarify') renderClarify();
+  if (name==='output') { renderOutput(); setTimeout(renderThinkingFlow, 100); setTimeout(renderOutputRightPanel, 120); setTimeout(updateRerunBtn, 150); }
+}
+function updateStepBar(name) {
+  const map = {builder:1,clarify:2,running:3,output:4};
+  const cur = map[name]||1;
+  for(let i=1;i<=4;i++){
+    const s=document.getElementById('stp'+i);
+    if(!s)continue;
+    s.classList.remove('active','done');
+    if(i===cur) s.classList.add('active');
+    else if(i<cur) s.classList.add('done');
+  }
+}
+function goStep(step) {
+  if(step===1) showScreen('builder');
+  else if(step===2) showScreen('clarify');
+  else if(step===3){ showScreen('running'); animateRun(() => doGenerate().then(() => showScreen('output'))); }
+  else if(step===4) showScreen('output');
+}
+function animateRun(done){
+  const ids=['rs1','rs2','rs3','rs4','rs5'];
+  const labels=['Reading your request and answers','Applying your rules','Writing the result piece by piece','Checking for anything uncertain','Preparing your review'];
+  ids.forEach((id,i)=>{const e=document.getElementById(id);if(e){e.className='rs';e.textContent='◦ '+labels[i];}});
+  let i=0;
+  const iv=setInterval(()=>{
+    if(i>0){const p=document.getElementById(ids[i-1]);if(p){p.classList.remove('active');p.classList.add('done');p.textContent='✓ '+labels[i-1];}}
+    if(i<ids.length){const c=document.getElementById(ids[i]);if(c){c.classList.add('active');c.textContent='⟳ '+labels[i]+'…';}i++;}
+    else{clearInterval(iv);setTimeout(done,350);}
+  },380);
+}
+
+/* ═══════════════ OUTPUT INTERACTIONS ═══════════════ */
+const editStore = {};
+function startEdit(secId,actsId,reasonId){
+  const sec=document.getElementById(secId);
+  const txtNum = secId.replace('os','');
+  const txt=document.getElementById('txt'+txtNum);
+  const acts=document.getElementById(actsId);
+  if(!txt||!acts)return;
+  editStore[secId]=txt.innerHTML;
+  txt.contentEditable='true';
+  txt.focus();sec.classList.add('editing');
+  acts.innerHTML=`<span style="font-size:12px;font-weight:600;color:var(--warn)">✏ Editing…</span><button class="btn-save" onclick="saveEdit('${secId}','${actsId}','${reasonId}')">✓ Save</button><button class="btn-cancel-e" onclick="cancelEdit('${secId}','${actsId}','${reasonId}')">Cancel</button>`;
+}
+function saveEdit(secId,actsId,reasonId){
+  const sec=document.getElementById(secId);
+  const txtNum = secId.replace('os','');
+  const txt=document.getElementById('txt'+txtNum);
+  if(txt){txt.contentEditable='false';txt.style.background='';txt.style.border='';txt.style.borderRadius='';txt.style.padding='';}
+  sec.classList.remove('editing');
+  const acts=document.getElementById(actsId);
+  if(acts){acts.innerHTML=`<span class="badge be">✏ Edited by you</span><button class="btn-edit" onclick="startEdit('${secId}','${actsId}','${reasonId}')">✏ Edit again</button><button class="btn-lock" onclick="lockSec('${secId}','${actsId}')">Accept &#128274;</button>`;}
+}
+function cancelEdit(secId,actsId,reasonId){
+  const sec=document.getElementById(secId);
+  const txtNum = secId.replace('os','');
+  const txt=document.getElementById('txt'+txtNum);
+  if(txt&&editStore[secId]){txt.innerHTML=editStore[secId];txt.contentEditable='false';txt.style.background='';txt.style.border='';txt.style.borderRadius='';txt.style.padding='';}
+  sec.classList.remove('editing');
+  const acts=document.getElementById(actsId);
+  if(acts){acts.innerHTML=`<span class="badge br" onclick="toggleR('${reasonId}')">&#9888; Review</span><button class="btn-edit" onclick="startEdit('${secId}','${actsId}','${reasonId}')">✏ Edit</button><button class="btn-lock" onclick="lockSec('${secId}','${actsId}')">Accept &#128274;</button>`;}
+}
+function lockSec(secId,actsId){
+  locked.add(secId);
+  const sec=document.getElementById(secId);
+  sec.classList.add('locked');
+  const acts=document.getElementById(actsId);
+  if(acts){
+    acts.innerHTML=`<div class="locked-banner" style="padding:0;display:flex;align-items:center;justify-content:space-between;width:100%;">
+      <span>&#128274; Accepted — won't change on re-run</span>
+      <button onclick="unlockSec('${secId}','${actsId}')" style="font-size:11px;padding:3px 9px;border-radius:5px;border:1px solid var(--okB);background:var(--surf);color:var(--ok);cursor:pointer;font-family:inherit;flex-shrink:0;">Unlock ✎</button>
+    </div>`;
+    acts.style.pointerEvents='all';
+  }
+  updateRefineStatus();
+  updateScreenNav();
+  updateRerunBtn();
+}
+function unlockSec(secId, actsId) {
+  locked.delete(secId);
+  const sec = document.getElementById(secId);
+  sec.classList.remove('locked');
+  const acts = document.getElementById(actsId);
+  if (!acts) return;
+  acts.style.pointerEvents = '';
+  const num = parseInt(secId.replace('os','')) - 1;
+  const c = CASES[currentCase];
+  const out = c.outputs[num];
+  if (!out) return;
+  const reasonId = 'r' + (num+1);
+  acts.innerHTML = `<span class="badge ${out.badge}" onclick="toggleR('${reasonId}')">${out.badgeText}</span>
+    <button class="btn-edit" onclick="startEdit('${secId}','${actsId}','${reasonId}')">&#9999; Edit</button>
+    <button class="btn-lock" onclick="lockSec('${secId}','${actsId}')">Accept &#128274;</button>`;
+  updateRefineStatus();
+  updateScreenNav();
+}
+
+function updateRefineStatus(){
+  const st=document.getElementById('refine-status');
+  if(!st)return;
+  const c = CASES[currentCase];
+  const lk = [];
+  const ul = [];
+  c.outputs.forEach((out,idx) => {
+    const id = 'os'+(idx+1);
+    if(locked.has(id)) lk.push(out.title);
+    else ul.push(out.title);
+  });
+  let html='';
+  lk.forEach(t=>html+=`<span class="lock-pill">&#128274; ${t}</span>`);
+  ul.forEach(t=>html+=`<span class="unlock-pill">${t}</span>`);
+  if(!lk.length)html='<span class="unlock-pill">All sections unlocked</span>';
+  st.innerHTML=html;
+}
+function toggleR(id){const p=document.getElementById(id);if(p)p.style.display=(p.style.display==='none'||!p.style.display)?'block':'none';}
+
+function scrollToScreen(secId, btn) {
+  document.querySelectorAll('.screen-nav-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const el = document.getElementById(secId);
+  if (el) el.scrollIntoView({behavior:'smooth', block:'center'});
+}
+
+function updateScreenNav() {
+  const c = CASES[currentCase];
+  if (!c.screenByScreen) return;
+  const btns = document.querySelectorAll('.screen-nav-btn');
+  c.outputs.forEach((out, idx) => {
+    const secId = 'os'+(idx+1);
+    if (btns[idx] && locked.has(secId)) {
+      btns[idx].classList.add('done');
+      btns[idx].innerHTML = '&#10003; ' + out.title;
+    }
+  });
+  // Check if all screens accepted
+  if (locked.size === c.outputs.length && c.screenByScreen) {
+    const container = document.getElementById('output-content');
+    const existing = container.querySelector('.combine-banner');
+    if (!existing) {
+      const combineBanner = document.createElement('div');
+      combineBanner.className = 'combine-banner';
+      combineBanner.style.cssText = 'background:var(--okL);border:2px solid var(--okB);border-radius:10px;padding:16px 18px;margin-top:16px;';
+      combineBanner.innerHTML = `<div style="display:flex;align-items:center;gap:12px;">
+        <span style="font-size:24px">&#10003;</span>
+        <div style="flex:1"><strong style="font-size:14px;color:var(--ok);display:block;margin-bottom:3px;">All ${c.outputs.length} screens accepted!</strong>
+        <div style="font-size:12.5px;color:var(--tx2);">Claude will now combine these into a single working prototype file with navigation between screens.</div></div>
+        <button class="btn-p" onclick="doExport()" style="font-size:13px;padding:10px 20px;">Combine &amp; download →</button>
+      </div>`;
+      // Insert before the refine panel
+      const refine = container.querySelector('.refine-panel');
+      if (refine) container.insertBefore(combineBanner, refine);
+      else container.appendChild(combineBanner);
+      combineBanner.scrollIntoView({behavior:'smooth',block:'center'});
+    }
+  }
+}
+
+
+/* ═══════════════ RERUN BUTTON STATE ═══════════════ */
+function updateRerunBtn() {
+  const btn = document.getElementById('rerun-btn');
+  const doneBtn = document.getElementById('done-export-btn');
+  if (!btn) return;
+  const c = CASES[currentCase];
+  const totalSections = c.outputs.length;
+  const allLocked = locked.size >= totalSections;
+  const textarea = document.getElementById('refine-textarea');
+  const hasText = textarea && textarea.value.trim().length > 0;
+  const hasUnlocked = locked.size < totalSections;
+
+  // Disable re-run if: all sections locked AND nothing typed
+  const disabled = allLocked && !hasText;
+  btn.disabled = disabled;
+  btn.style.opacity = disabled ? '0.4' : '';
+  btn.style.cursor = disabled ? 'not-allowed' : '';
+
+  // Promote Done button to primary when all locked
+  if (doneBtn) {
+    if (allLocked && !hasText) {
+      doneBtn.className = 'btn-p';
+      doneBtn.style.fontSize = '13px';
+    } else {
+      doneBtn.className = 'btn-o';
+      doneBtn.style.fontSize = '13px';
+    }
+  }
+}
+
+/* ═══════════════ RE-RUN FLOW ═══════════════ */
+let rerunCount = 0;
+function startRerun() {
+  rerunCount++;
+  const prevLocked = new Set(locked); // save before renderOutput resets it
+  showScreen('running');
+  document.getElementById('run-title').innerHTML = 'Claude is <span>updating your result</span>';
+  document.getElementById('run-sub').textContent = 'Only re-running the unlocked sections. Locked parts stay exactly as they are.';
+  animateRun(() => {
+    showScreen('output'); // renderOutput() resets locked = new Set()
+
+    // Re-apply previously locked sections so they stay locked
+    prevLocked.forEach(secId => {
+      const num = secId.replace('os','');
+      lockSec(secId, 'acts'+num);
+    });
+
+    // Add rerun banner at top
+    const container = document.getElementById('output-content');
+    const banner = document.createElement('div');
+    banner.className = 'rerun-banner';
+    banner.innerHTML = `<span>&#10003;</span><div class="rerun-banner-text"><strong>Updated — changes highlighted below</strong><div>Run #${rerunCount+1} complete. Locked sections were not touched. New changes are <span class="diff-new">highlighted like this</span>.</div></div>`;
+    container.insertBefore(banner, container.firstChild);
+
+    // Add diff markers to unlocked sections only (use locked Set, not CSS class)
+    const refineTxt = (document.getElementById('refine-textarea') || {}).value || '';
+    const feedbackLabel = refineTxt.trim()
+      ? ' <span class="diff-new">revised: ' + refineTxt.trim().substring(0,60) + (refineTxt.trim().length>60?'…':'') + '</span>'
+      : ' <span class="diff-new">(re-run applied)</span>';
+    document.querySelectorAll('.out-sec').forEach(sec => {
+      if (!locked.has(sec.id)) {
+        const txt = sec.querySelector('.os-txt');
+        if (txt) {
+          // Remove any old diff markers first
+          txt.querySelectorAll('.diff-new').forEach(el => el.outerHTML = el.textContent);
+          const content = txt.innerHTML;
+          const firstBr = content.indexOf('<br>');
+          if (firstBr > 0) {
+            txt.innerHTML = content.substring(0, firstBr) + feedbackLabel + content.substring(firstBr);
+          }
+        }
+        const acts = sec.querySelector('.os-acts');
+        if (acts && !acts.querySelector('.be')) {
+          const secId = sec.id;
+          const actsId = acts.id;
+          acts.innerHTML = `<span class="badge bv">&#10003; Re-done</span><button class="btn-edit" onclick="startEdit('${secId}','${actsId}','r1')">&#9999; Edit</button><button class="btn-lock" onclick="lockSec('${secId}','${actsId}')">Accept &#128274;</button>`;
+        }
+      }
+    });
+    // Update banner to show what feedback was applied
+    if (refineTxt.trim()) {
+      const bannerDiv = container.querySelector('.rerun-banner .rerun-banner-text div');
+      if (bannerDiv) bannerDiv.innerHTML = 'Applied: <em>"' + refineTxt.trim().substring(0,80) + (refineTxt.trim().length>80?'…':'') + '"</em> — locked sections untouched.';
+    }
+    updateRerunBtn();
+  });
+}
+
+/* ═══════════════ EXPORT / DOWNLOAD ═══════════════ */
+function showExport() {
+  const c = CASES[currentCase];
+  const container = document.getElementById('output-content');
+
+  const totalSections = c.outputs.length;
+  const lockedCount = locked.size;
+  const allLocked = lockedCount === totalSections;
+  const refineTxt = ((document.getElementById('refine-textarea') || {}).value || '').trim();
+
+  // Check 1: Unsubmitted feedback in textarea
+  if (refineTxt.length > 0) {
+    const existing = container.querySelector('.feedback-warn');
+    if (existing) existing.remove();
+    const warn = document.createElement('div');
+    warn.className = 'feedback-warn';
+    warn.style.cssText = 'background:var(--warnL);border:2px solid var(--warnB);border-radius:10px;padding:14px 17px;margin-bottom:14px;';
+    warn.innerHTML = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span style="font-size:20px">&#9888;</span>
+      <div style="flex:1;min-width:200px"><strong style="color:var(--warn);font-size:13px;">You have feedback that hasn't been applied</strong>
+      <div style="font-size:12px;color:var(--tx2);margin-top:3px;">Your note <em>"${refineTxt.substring(0,70)}${refineTxt.length>70?'…':''}"</em> hasn't been re-run yet. Export without applying it, or go back and re-run first?</div></div>
+      <button class="btn-o" style="font-size:12px;padding:6px 12px;" onclick="this.closest('.feedback-warn').remove()">Go back</button>
+      <button class="btn-p" style="font-size:12px;padding:6px 14px;" onclick="this.closest('.feedback-warn').remove();doExport()">Export anyway →</button>
+    </div>`;
+    container.insertBefore(warn, container.firstChild);
+    const contentArea = document.querySelector('.content');
+    if(contentArea) contentArea.scrollTop = 0;
+    return;
+  }
+
+  // Check 2: Not all sections accepted
+  if (!allLocked) {
+    // Show warning before export
+    const warn = document.createElement('div');
+    warn.style.cssText = 'background:var(--warnL);border:2px solid var(--warnB);border-radius:10px;padding:14px 17px;margin-bottom:14px;';
+    warn.innerHTML = `<div style="display:flex;align-items:center;gap:10px;">
+      <span style="font-size:20px">&#9888;</span>
+      <div style="flex:1"><strong style="color:var(--warn);font-size:13px;">Not all sections are accepted yet</strong>
+      <div style="font-size:12px;color:var(--tx2);margin-top:3px;">${lockedCount} of ${totalSections} sections accepted. You can still export, but unreviewed sections may contain guesses.</div></div>
+      <button class="btn-o" style="font-size:12px;padding:6px 12px;" onclick="this.parentElement.parentElement.remove()">Dismiss</button>
+      <button class="btn-p" style="font-size:12px;padding:6px 14px;" onclick="doExport()">Export anyway →</button>
+    </div>`;
+    container.insertBefore(warn, container.firstChild);
+    container.scrollTop = 0;
+    const contentArea = document.querySelector('.content'); if(contentArea) contentArea.scrollTop = 0;
+    return;
+  }
+
+  doExport();
+}
+
+function doExport() {
+  const c = CASES[currentCase];
+  const container = document.getElementById('output-content');
+
+  // Determine export options based on case
+  let exportOpts = '';
+  if (currentCase === 'merge') {
+    exportOpts = `
+      <div class="export-opt selected" onclick="selectExport(this)"><div class="export-opt-icon">📄</div><div class="export-opt-label">PDF</div><div class="export-opt-desc">Ready to send</div></div>
+      <div class="export-opt" onclick="selectExport(this)"><div class="export-opt-icon">📝</div><div class="export-opt-label">Word (.docx)</div><div class="export-opt-desc">Editable document</div></div>
+      <div class="export-opt" onclick="selectExport(this)"><div class="export-opt-icon">📋</div><div class="export-opt-label">Copy text</div><div class="export-opt-desc">Paste anywhere</div></div>
+    `;
+  } else if (currentCase === 'proto') {
+    exportOpts = `
+      <div class="export-opt selected" onclick="selectExport(this)"><div class="export-opt-icon">🌐</div><div class="export-opt-label">HTML file</div><div class="export-opt-desc">Open in browser</div></div>
+      <div class="export-opt" onclick="selectExport(this)"><div class="export-opt-icon">📱</div><div class="export-opt-label">Preview link</div><div class="export-opt-desc">Share with team</div></div>
+      <div class="export-opt" onclick="selectExport(this)"><div class="export-opt-icon">📋</div><div class="export-opt-label">Copy code</div><div class="export-opt-desc">Paste into editor</div></div>
+    `;
+  } else {
+    exportOpts = `
+      <div class="export-opt selected" onclick="selectExport(this)"><div class="export-opt-icon">📄</div><div class="export-opt-label">PDF report</div><div class="export-opt-desc">Formal document</div></div>
+      <div class="export-opt" onclick="selectExport(this)"><div class="export-opt-icon">📊</div><div class="export-opt-label">Excel (.xlsx)</div><div class="export-opt-desc">Findings as spreadsheet</div></div>
+      <div class="export-opt" onclick="selectExport(this)"><div class="export-opt-icon">📋</div><div class="export-opt-label">Copy text</div><div class="export-opt-desc">Paste into email</div></div>
+    `;
+  }
+
+  // Build export panel
+  const exportHTML = `<div class="export-panel">
+    <div class="export-hd">
+      <div class="export-hd-icon">&#10003;</div>
+      <div style="flex:1"><strong style="font-size:15px;display:block;margin-bottom:2px;">Your result is ready</strong>
+      <span style="font-size:12px;color:var(--tx2);">All sections reviewed. Choose how to save or share.</span></div>
+    </div>
+    <div class="export-body">
+      <div style="font-size:13px;font-weight:600;margin-bottom:4px;">What was included:</div>
+      <div style="font-size:12.5px;color:var(--tx2);margin-bottom:12px;line-height:1.7;">
+        ${c.outputs.map(o => '&#10003; ' + o.title).join('<br>')}
+      </div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:4px;">Choose a format:</div>
+      <div class="export-opts">${exportOpts}</div>
+      <div style="display:flex;gap:10px;margin-top:16px;align-items:center;flex-wrap:wrap;">
+        <button class="btn-p" onclick="exportAction(this,'Downloaded — check your downloads folder ✓')">Download →</button>
+        <button class="btn-o" onclick="exportAction(this,'Share link copied to clipboard ✓')">Copy share link</button>
+        <span style="font-size:11.5px;color:var(--tx3);margin-left:auto;">You can also keep editing — go back anytime.</span>
+      </div>
+      <div id="export-status-msg" style="display:none;margin-top:8px;font-size:12.5px;font-weight:600;color:var(--ok);padding:7px 11px;background:var(--okL);border:1px solid var(--okB);border-radius:7px;"></div>
+    </div>
+  </div>`;
+
+  // Append to container (after existing content)
+  const existing = container.querySelector('.export-panel');
+  if (existing) existing.remove();
+  container.insertAdjacentHTML('beforeend', exportHTML);
+  container.querySelector('.export-panel').scrollIntoView({behavior:'smooth',block:'center'});
+}
+
+
+function exportAction(btn, msg) {
+  const el = document.getElementById('export-status-msg');
+  if (el) {
+    el.textContent = msg;
+    el.style.display = 'block';
+    setTimeout(() => { el.style.display = 'none'; }, 3000);
+  }
+}
+
+function selectExport(el) {
+  el.parentElement.querySelectorAll('.export-opt').forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+
+/* ═══════════════ THINKING FLOW ═══════════════ */
+function renderThinkingFlow() {
+  const c = CASES[currentCase];
+  const el = document.getElementById('thinking-flow-content');
+  if (!el) return;
+  const stakeLabel = {low:'Quick draft',med:'Medium priority',high:'High priority'}[c.stakes] || c.stakes;
+  const modelLabel = {haiku:'Haiku 4.5',sonnet46:'Sonnet 4.6',sonnet45:'Sonnet 4.5',opus:'Opus 4.6'}[c.model] || c.model;
+  const steps = [
+    {n:'1', title:'Task understood', detail: c.interpretation},
+    {n:'2', title:'Stakes & model', detail: `Importance: ${stakeLabel} · Model: ${modelLabel}`},
+    {n:'3', title:'Assumptions made', detail: c.assumptions.map(a=>(a.risk?'⚠ ':'• ')+a.text).join(' · ')},
+    {n:'4', title:'Questions asked', detail: c.questions.length ? c.questions.map(q=>q.q).join(' | ') : 'None — quick draft mode'},
+    {n:'5', title:'Sections produced', detail: c.outputs.map(o=>o.title).join(', ')},
+    {n:'6', title:'Confidence', detail: c.outputs.map((o,i)=>o.title+': '+(o.badge==='bv'?'High':'o.badge==="bd"'?'Needs validation':'Review')).join(' · ')}
+  ];
+  el.innerHTML = steps.map(s=>`<div style="display:flex;gap:9px;margin-bottom:9px;align-items:flex-start;">
+    <div style="width:20px;height:20px;border-radius:50%;background:var(--clL);color:var(--cl);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;">${s.n}</div>
+    <div><div style="font-size:12px;font-weight:700;color:var(--tx);margin-bottom:2px;">${s.title}</div><div style="font-size:11px;color:var(--tx3);line-height:1.5;">${s.detail}</div></div>
+  </div>`).join('');
+}
+function downloadThinkingFlow() {
+  const c = CASES[currentCase];
+  const stakeLabel = {low:'Quick draft',med:'Medium priority',high:'High priority'}[c.stakes] || c.stakes;
+  const modelLabel = {haiku:'Haiku 4.5',sonnet46:'Sonnet 4.6',sonnet45:'Sonnet 4.5',opus:'Opus 4.6'}[c.model] || c.model;
+  let txt = 'CLAUDE — THINKING FLOW\n';
+  txt += '='.repeat(50) + '\n\n';
+  txt += 'STEP 1: TASK UNDERSTOOD\n';
+  txt += c.interpretation + '\n\n';
+  txt += 'STEP 2: SETTINGS\n';
+  txt += 'Importance level: ' + stakeLabel + '\n';
+  txt += 'Model used: ' + modelLabel + '\n\n';
+  txt += 'STEP 3: ASSUMPTIONS MADE\n';
+  c.assumptions.forEach(a => { txt += (a.risk ? '[RISK] ' : '[OK]   ') + a.text + '\n'; });
+  txt += '\nSTEP 4: CLARIFYING QUESTIONS\n';
+  if (c.questions.length) {
+    c.questions.forEach((q,i) => { txt += (i+1) + '. ' + q.q + '\n   Why: ' + q.why + '\n'; });
+  } else { txt += 'None — quick draft mode, Claude proceeded directly.\n'; }
+  txt += '\nSTEP 5: SECTIONS PRODUCED\n';
+  c.outputs.forEach((o,i) => {
+    txt += (i+1) + '. ' + o.title + '\n';
+    const conf = o.badge==='bv' ? 'High confidence' : o.badge==='bd' ? 'Needs validation' : 'Review recommended';
+    txt += '   Confidence: ' + conf + '\n';
+  });
+  txt += '\nSTEP 6: REASONING NOTES\n';
+  Object.values(c.reasons).forEach(r => { txt += r.replace(/<[^>]+>/g,'') + '\n\n'; });
+  txt += '\n' + '='.repeat(50) + '\nGenerated by Claude Advanced Prompting\n';
+
+  const blob = new Blob([txt], {type:'text/plain'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'claude-thinking-flow.txt';
+  a.click();
+}
+
+/* ═══════════════ INIT ═══════════════ */
+showScreen('builder');
+// Default stakes to Medium priority
+(function() {
+  const skEls = document.querySelectorAll('.sk');
+  if (skEls[1]) setSk('med', skEls[1]);
+})();
+</script>
+</body>
+</html>
