@@ -287,7 +287,8 @@ exports.handler = async (event) => {
     `BASE INTERPRETATION: ${interpretation || goal}` +
     (answersText ? `\n\nUSER CONFIRMED / CLARIFIED IN REVIEW:\n${answersText}\n\nINSTRUCTION: The user confirmations above OVERRIDE the base interpretation where they conflict. Incorporate them directly into your output — do not treat them as suggestions.` : '') +
     (extraContext ? `\n\nADDITIONAL CONTEXT FROM USER: ${extraContext}` : '') +
-    filesText;
+    filesText +
+    '\n\nNOTE: Do not ask for more information or files. Generate the best possible result from the context provided above.';
 
   try {
     const client = new Anthropic({ apiKey });
@@ -295,10 +296,13 @@ exports.handler = async (event) => {
       model: selectedModel,
       max_tokens: maxTokens,
       system: finalPolish ? buildFinalPolishPrompt(taskType, role, con) : buildSystemPrompt(stakes, role, con, taskType),
-      messages: [{ role: 'user', content: userMessage }]
+      messages: [
+        { role: 'user', content: userMessage },
+        { role: 'assistant', content: '{' }
+      ]
     });
 
-    const raw = message.content[0].text;
+    const raw = '{' + message.content[0].text;
     const parsed = extractJSON(raw);
 
     // Validate output shape

@@ -1069,7 +1069,7 @@ function renderClarify() {
   if (assmRow) { assmRow.innerHTML = ''; assmRow.style.display = 'none'; }
 
   // Render interpretation as bullet points — use stored bullets array if available
-  const bullets = c.interpretationBullets || c.interpretation.split(/(?<=[.!?])\s+/).filter(s => s.trim());
+  const bullets = c.interpretationBullets || (c.interpretation || '').split(/[.!?;]+\s+/).filter(s => s.trim().length > 3);
   if (!c.interpretationBullets) c.interpretationBullets = bullets;
   const bulletHTML = '<ul style="list-style:none;padding:0;margin:0">' +
     bullets.map(s => '<li style="display:flex;gap:8px;margin-bottom:7px;font-style:normal"><span style="color:var(--cl);font-weight:700;flex-shrink:0;margin-top:2px">•</span><span>' + s + '</span></li>').join('') +
@@ -1123,6 +1123,7 @@ function renderClarify() {
     `;
     qArea.appendChild(card);
     _restoreCardState(card, qId);
+    if (card.dataset.answered === 'true') card.style.display = 'none';
   });
 
   // Regular questions
@@ -1148,6 +1149,7 @@ function renderClarify() {
       `;
       qArea.appendChild(card);
       _restoreCardState(card, q.id);
+      if (card.dataset.answered === 'true') card.style.display = 'none';
     });
   }
 
@@ -1475,7 +1477,7 @@ async function doReviewAgain() {
           CASES.merge.cardClarifications = newClarifications;
         }
         // Use fresh interpretation from re-parse; append any extra context not already captured
-        const freshBullets = (data.interpretation || '').split(/(?<=[.!?])\s+/).filter(s => s.trim());
+        const freshBullets = (data.interpretation || '').split(/[.!?;]+\s+/).filter(s => s.trim().length > 3);
         const allExtra = [
           extra.trim(),
           ...cardClarifications.map(c => c.split(': ').slice(1).join(': '))
