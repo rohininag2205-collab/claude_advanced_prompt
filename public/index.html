@@ -870,14 +870,20 @@ async function doGenerate() {
   });
 
   const c = CASES.merge;
+  // Always read current DOM values so manual edits on Screen 1 are picked up
+  const domGoal = (document.getElementById('inp-goal') || {}).value || c.goal || '';
+  const domCtx  = (document.getElementById('inp-ctx')  || {}).value || c.ctx  || '';
+  const domFmt  = (document.getElementById('inp-fmt')  || {}).value || c.fmt  || '';
+  const domRole = (document.getElementById('inp-role') || {}).value || c.role || '';
+  const domCon  = (document.getElementById('inp-con')  || {}).value || c.con  || '';
   try {
     const res = await fetch('/api/claude-generate', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
-        goal: c.goal, ctx: c.ctx, fmt: c.fmt, role: c.role, con: c.con,
+        goal: domGoal, ctx: domCtx, fmt: domFmt, role: domRole, con: domCon,
         stakes: c.stakes, model: model, interpretation: c.interpretation,
-        answers, files: currentFiles, taskType: detectTaskType(c.goal),
+        answers, files: currentFiles, taskType: detectTaskType(domGoal),
         extraContext: c.extraContext || ''
       })
     });
