@@ -2230,7 +2230,22 @@ async function doFinalPolish() {
   const acceptedOutputs = c.outputs.filter((_, i) => locked.has('os'+(i+1)));
   const sections = acceptedOutputs.length > 0 ? acceptedOutputs : c.outputs;
 
-  // Show spinner while polishing
+  // Prototype: HTML screens are already in sections — combine client-side, no API call needed
+  if (taskType === 'prototype') {
+    const html = buildPrototypeHTML(sections);
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'prototype.html'; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    // Show confirmation
+    container.insertAdjacentHTML('beforeend', `<div style="background:var(--okL);border:1.5px solid var(--okB);border-radius:10px;padding:14px 16px;margin-top:12px;font-size:13px;color:var(--ok);font-weight:600;">
+      ✓ Prototype downloaded — ${sections.length} screen${sections.length!==1?'s':''} combined into one HTML file.
+      <button class="btn-o" style="margin-left:12px;font-size:12px;padding:4px 10px;" onclick="exportCopy()">Copy code instead</button>
+    </div>`);
+    return;
+  }
+
+  // Document / job search / generic: send accepted section text to Claude for final polish
   container.insertAdjacentHTML('beforeend', `<div id="polish-spinner" style="text-align:center;padding:40px 20px">
     <div class="spinner" style="margin:0 auto 14px"></div>
     <div style="font-size:14px;font-weight:600;margin-bottom:4px">Claude is creating your final output…</div>
