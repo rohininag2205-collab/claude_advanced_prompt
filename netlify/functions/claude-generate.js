@@ -22,6 +22,45 @@ function buildSystemPrompt(stakes, role, con, taskType) {
     high: 'HIGH stakes — be thorough. Explicitly call out anything uncertain, any guess, any number that needs verification. When in doubt, flag it.'
   }[stakes] || '';
 
+  const protoInstructions = taskType === 'prototype' ? `
+TASK TYPE: Prototype / UI Design
+
+You are producing HTML screens for an interactive prototype. Split the prototype into 2–3 key screens or views.
+
+For each output section (one screen):
+- title: short screen name (e.g. "Dashboard", "Login Screen", "Product Detail")
+- body: complete, self-contained HTML snippet for that screen — include all inline CSS needed
+  - Use modern, clean styling. Consistent colour palette across all screens.
+  - Include realistic placeholder content (text, icons using unicode or simple SVG, buttons)
+  - Do NOT rely on external CSS frameworks. Inline everything.
+  - The snippet should be a single <div> containing the screen layout (not a full HTML page)
+- badge: "bv" for primary screens, "br" for secondary screens
+- badgeText: "✓ Screen ready" or "⚠ Review layout"
+
+The user will accept individual screens. Accepted screens will be combined into one navigable HTML prototype file.
+` : '';
+
+  const protoShape = taskType === 'prototype' ? `
+Return this exact JSON shape (one entry per screen):
+
+{
+  "outputs": [
+    {
+      "title": "Screen name",
+      "body": "<div style='...'> ...complete HTML for this screen... </div>",
+      "badge": "bv",
+      "badgeText": "✓ Screen ready",
+      "reasonKey": "r1"
+    }
+  ],
+  "reasons": {
+    "r1": "<strong>Design choices:</strong> explain layout decisions for screen 1",
+    "r2": "<strong>Design choices:</strong> explain layout decisions for screen 2"
+  },
+  "references": []
+}
+` : null;
+
   const jobSearchInstructions = taskType === 'jobsearch' ? `
 TASK TYPE: Job/Career Search Analysis
 
@@ -46,7 +85,7 @@ OUTPUT 3 — "What Claude isn't sure about" (badge: "bd") — include ONLY if th
 Use real salary ranges relevant to their location/market if mentioned. If salary constraints were stated (e.g. "minimum 15 LPA"), anchor ALL salary mentions to that constraint.
 ` : '';
 
-  const baseShape = taskType === 'jobsearch' ? `
+  const baseShape = protoShape || (taskType === 'jobsearch' ? `
 Return this exact JSON shape:
 
 {
@@ -95,7 +134,7 @@ Split the result into 2–3 logical sections. Return this exact JSON shape:
     { "name": "filename or source name", "type": "file" }
   ]
 }
-`;
+`);
 
   return `You are Claude completing a task via the Advanced Prompting tool.
 
@@ -104,7 +143,7 @@ Complete the task described by the user and return the result as JSON.
 ${stakesNote}
 ${role ? `\nACT AS: ${role}` : ''}
 ${con ? `\nHARD CONSTRAINTS (never violate):\n${con}` : ''}
-${jobSearchInstructions}
+${protoInstructions}${jobSearchInstructions}
 ${baseShape}
 
 Badge values:
@@ -159,7 +198,7 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid JSON body' }) };
   }
 
-  const { goal, ctx, fmt, role, con, stakes, model, interpretation, answers, files, taskType: clientTaskType } = body;
+  const { goal, ctx, fmt, role, con, stakes, model, interpretation, answers, files, taskType: clientTaskType, extraContext } = body;
   const taskType = clientTaskType || detectTaskType(goal);
 
   if (!goal) {
@@ -169,8 +208,11 @@ exports.handler = async (event) => {
   const selectedModel = MODEL_MAP[model] || 'claude-sonnet-4-6';
 
   const answersText = answers && answers.length > 0
-    ? '\n\nUser answers to clarifying questions:\n' +
-      answers.map(a => `Q: ${a.question}\nA: ${a.answer}`).join('\n\n')
+    ? answers.map(a => {
+        let line = `• ${a.question} → ${a.answer}`;
+        if (a.clarification) line += ` (user note: ${a.clarification})`;
+        return line;
+      }).join('\n')
     : '';
 
   const filesText = files && files.length > 0
@@ -181,8 +223,9 @@ exports.handler = async (event) => {
     `TASK: ${goal}\n\n` +
     `CONTEXT: ${ctx || 'None provided'}\n\n` +
     `OUTPUT FORMAT: ${fmt || 'Use the most appropriate format for this task'}\n\n` +
-    `CONFIRMED INTERPRETATION: ${interpretation || goal}` +
-    answersText +
+    `BASE INTERPRETATION: ${interpretation || goal}` +
+    (answersText ? `\n\nUSER CONFIRMED / CLARIFIED IN REVIEW:\n${answersText}\n\nINSTRUCTION: The user confirmations above OVERRIDE the base interpretation where they conflict. Incorporate them directly into your output — do not treat them as suggestions.` : '') +
+    (extraContext ? `\n\nADDITIONAL CONTEXT FROM USER: ${extraContext}` : '') +
     filesText;
 
   try {
