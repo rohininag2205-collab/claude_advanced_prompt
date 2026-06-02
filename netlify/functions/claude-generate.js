@@ -15,6 +15,43 @@ function detectTaskType(goal) {
   return 'generic';
 }
 
+function buildFinalPolishPrompt(taskType, role, con) {
+  const instructions = {
+    prototype: `You are combining user-validated HTML screens into one final polished prototype.
+The user has reviewed draft screens and the extraContext contains the accepted ones.
+Create a single, complete, navigable HTML prototype that integrates all the accepted screens.
+Return ONE output section titled "Final Prototype" with the complete HTML page as the body (use single quotes for all HTML attributes).
+Badge: "bv". BadgeText: "✓ Final prototype".`,
+    document: `You are creating the final polished document from user-validated sections.
+The user has reviewed draft sections and the extraContext contains the accepted ones.
+Combine them into one seamless, well-structured final document — smooth out transitions, remove draft markers.
+Return ONE output section with the complete document as the body.
+Badge: "bv". BadgeText: "✓ Final document".`,
+    jobsearch: `You are writing a final career strategy summary from user-validated sections.
+The user has reviewed and accepted specific career recommendations.
+Combine them into a clean, professional career strategy summary — clear headings, action steps, salary guidance.
+Return 1–2 output sections. Badge: "bv".`,
+    generic: `You are creating the final polished result from user-validated sections.
+The user has accepted specific sections. Combine and refine them into a single coherent final output.
+Return 1–2 output sections. Badge: "bv".`
+  };
+
+  return `You are Claude creating a FINAL polished output from user-validated draft sections.
+${role ? `\nACT AS: ${role}` : ''}
+${con ? `\nHARD CONSTRAINTS (never violate):\n${con}` : ''}
+
+${instructions[taskType] || instructions.generic}
+
+Return this exact JSON shape:
+{
+  "outputs": [{ "title": "string", "body": "HTML content", "badge": "bv", "badgeText": "✓ Final result", "reasonKey": "r1" }],
+  "reasons": { "r1": "<strong>Final output:</strong> combined from user-validated sections" },
+  "references": []
+}
+
+IMPORTANT: Return ONLY valid JSON. No markdown, no preamble.`;
+}
+
 function buildSystemPrompt(stakes, role, con, taskType) {
   const stakesNote = {
     low:  'LOW stakes — be concise. Fewer caveats. Just get it done.',
@@ -28,16 +65,19 @@ TASK TYPE: Prototype / UI Design
 You are producing HTML screens for an interactive prototype. Split the prototype into 2–3 key screens or views.
 
 For each output section (one screen):
-- title: short screen name (e.g. "Dashboard", "Login Screen", "Product Detail")
-- body: complete, self-contained HTML snippet for that screen — include all inline CSS needed
-  - Use modern, clean styling. Consistent colour palette across all screens.
-  - Include realistic placeholder content (text, icons using unicode or simple SVG, buttons)
-  - Do NOT rely on external CSS frameworks. Inline everything.
-  - The snippet should be a single <div> containing the screen layout (not a full HTML page)
-- badge: "bv" for primary screens, "br" for secondary screens
-- badgeText: "✓ Screen ready" or "⚠ Review layout"
+- title: short screen name (e.g. Dashboard, Login Screen, Product Detail)
+- body: complete, self-contained HTML snippet for that screen with all inline CSS
+  - Use modern, clean styling with a consistent colour palette across all screens
+  - Include realistic placeholder content (text, unicode icons, buttons)
+  - Do NOT rely on external CSS frameworks — inline everything
+  - The snippet is a single div containing the screen layout (not a full HTML page)
+  - CRITICAL FOR VALID JSON: Use ONLY single quotes for ALL HTML attributes inside the body value.
+    Write style='...' NOT style="...". Write class='foo' NOT class="foo".
+    Double quotes inside a JSON string value will break the JSON.
+- badge: bv for primary screens, br for secondary screens
+- badgeText: Screen ready or Review layout
 
-The user will accept individual screens. Accepted screens will be combined into one navigable HTML prototype file.
+The user will accept individual screens. Accepted screens are combined into one navigable HTML prototype file.
 ` : '';
 
   const protoShape = taskType === 'prototype' ? `
@@ -163,12 +203,28 @@ IMPORTANT: Return ONLY valid JSON. No markdown code blocks, no preamble, no expl
 }
 
 function extractJSON(text) {
+  // Strip markdown code blocks if present
   const match = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (match) return JSON.parse(match[1].trim());
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start >= 0 && end > start) return JSON.parse(text.slice(start, end + 1));
-  return JSON.parse(text.trim());
+  const raw = match ? match[1].trim() : (() => {
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    return start >= 0 && end > start ? text.slice(start, end + 1) : text.trim();
+  })();
+
+  // First try direct parse
+  try { return JSON.parse(raw); } catch {}
+
+  // Fallback: replace HTML attribute double quotes with single quotes inside JSON string values
+  // This handles cases where Claude used style="..." instead of style='...' in the body field
+  const sanitized = raw.replace(/"body"\s*:\s*"([\s\S]*?)(?<!\\)"/g, (m, inner) => {
+    const fixed = inner.replace(/(?<!\\)"/g, "'");
+    return `"body": "${fixed}"`;
+  });
+  try { return JSON.parse(sanitized); } catch {}
+
+  // Last resort: strip any literal newlines inside string values
+  const stripped = raw.replace(/(?<=:\s*")([\s\S]*?)(?="[,\n}\]])/g, s => s.replace(/\n/g, '\\n').replace(/\r/g, ''));
+  return JSON.parse(stripped);
 }
 
 exports.handler = async (event) => {
@@ -198,7 +254,7 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid JSON body' }) };
   }
 
-  const { goal, ctx, fmt, role, con, stakes, model, interpretation, answers, files, taskType: clientTaskType, extraContext } = body;
+  const { goal, ctx, fmt, role, con, stakes, model, interpretation, answers, files, taskType: clientTaskType, extraContext, finalPolish } = body;
   const taskType = clientTaskType || detectTaskType(goal);
 
   if (!goal) {
@@ -206,6 +262,7 @@ exports.handler = async (event) => {
   }
 
   const selectedModel = MODEL_MAP[model] || 'claude-sonnet-4-6';
+  const maxTokens = taskType === 'prototype' ? 8192 : 4096;
 
   const answersText = answers && answers.length > 0
     ? answers.map(a => {
@@ -232,8 +289,8 @@ exports.handler = async (event) => {
     const client = new Anthropic({ apiKey });
     const message = await client.messages.create({
       model: selectedModel,
-      max_tokens: 4096,
-      system: buildSystemPrompt(stakes, role, con, taskType),
+      max_tokens: maxTokens,
+      system: finalPolish ? buildFinalPolishPrompt(taskType, role, con) : buildSystemPrompt(stakes, role, con, taskType),
       messages: [{ role: 'user', content: userMessage }]
     });
 
