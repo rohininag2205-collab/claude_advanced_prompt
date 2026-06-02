@@ -297,12 +297,11 @@ exports.handler = async (event) => {
       max_tokens: maxTokens,
       system: finalPolish ? buildFinalPolishPrompt(taskType, role, con) : buildSystemPrompt(stakes, role, con, taskType),
       messages: [
-        { role: 'user', content: userMessage },
-        { role: 'assistant', content: '{' }
+        { role: 'user', content: userMessage }
       ]
     });
 
-    const raw = '{' + message.content[0].text;
+    const raw = message.content[0].text;
     const parsed = extractJSON(raw);
 
     // Validate output shape
