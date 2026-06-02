@@ -754,7 +754,7 @@ function fillParsed(c) {
   document.getElementById('or-div').style.display = 'none';
   document.getElementById('pb-detail').textContent = (c.files && c.files.length ? c.files.length + ' files detected · ' : '') + 'Fields filled from your description';
 
-  // Fill fields
+  // Fill fields — only expand/badge fields that actually have content
   const fieldMap = {goal: c.goal, ctx: c.ctx, fmt: c.fmt, role: c.role, con: c.con};
   Object.entries(fieldMap).forEach(([key, val]) => {
     const inp = document.getElementById('inp-'+key);
@@ -762,9 +762,9 @@ function fillParsed(c) {
     const body = document.getElementById('body-'+key);
     const card = document.getElementById('bc-'+key);
     if(inp && val) { inp.value = val; inp.classList.add('auto-filled'); }
-    if(badge) badge.style.display = 'inline-flex';
-    if(body) body.style.display = 'block';
-    if(card) { card.classList.add('open','parsed-highlight'); }
+    if(badge) badge.style.display = val ? 'inline-flex' : 'none';
+    if(body) body.style.display = val ? 'block' : 'none';
+    if(card) { card.classList.toggle('open', !!val); card.classList.toggle('parsed-highlight', !!val); }
   });
 
   // Stakes
@@ -833,6 +833,9 @@ async function doUnderstand() {
       goal: originalPromptText.slice(0, 500),
       ctx: '', fmt: '', role: '', con: '',
       stakes: 'med', files: pzFiles,
+      interpretation: 'Complete the request as described.',
+      assumptions: [],
+      questions: [],
       outputs: CASES.merge.outputs, reasons: CASES.merge.reasons
     };
     Object.assign(CASES.merge, fallback);
