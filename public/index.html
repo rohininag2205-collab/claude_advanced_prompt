@@ -779,7 +779,7 @@ function fillParsed(c) {
   document.getElementById('auto-model').style.display = 'inline-flex';
 
   // Files
-  if (c.files.length) {
+  if (c.files && c.files.length) {
     const fc = document.getElementById('file-chips');
     fc.innerHTML = '';
     c.files.forEach(f => {
