@@ -773,7 +773,7 @@ function fillParsed(c) {
 
   // Store interpretation as bullets array for preservation across edits
   if (c.interpretation && !c.interpretationBullets) {
-    c.interpretationBullets = c.interpretation.split(/(?<=[.!?])\s+/).filter(s => s.trim());
+    c.interpretationBullets = c.interpretation.split(/[.!?;]+\s+/).filter(s => s.trim().length > 3);
   }
 
   // Enable "Check my request" button now that form is filled

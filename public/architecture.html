@@ -1,0 +1,1122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Advanced Prompting — System Architecture</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#F7F5F1; --surf:#FFF; --surf2:#F2EEE8;
+  --bdr:#E5DED4; --bdr2:#D4C9BC;
+  --tx:#1C1917; --tx2:#57524D; --tx3:#6B6055;
+  --cl:#D97757; --clL:#FDF3EE; --clD:#B85C38;
+  --ok:#0369A1; --okL:#E0F2FE; --okB:#7DD3FC;
+  --warn:#92400E; --warnL:#FFFBEB; --warnB:#FDE68A;
+  --danger:#9A3412; --dangerL:#FFF7ED; --dangerB:#FDBA74;
+  --blue:#1E40AF; --blueL:#EFF6FF; --blueB:#BFDBFE;
+  --purple:#5B21B6; --purpleL:#F5F3FF; --purpleB:#DDD6FE;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family:'Inter',system-ui,sans-serif;
+  background:#1C1917;
+  color:var(--tx);
+  font-size:14px;
+  line-height:1.5;
+  height:100vh;
+  overflow:hidden;
+}
+
+/* ── PRESENTER SHELL ── */
+.shell {
+  display:grid;
+  grid-template-rows:1fr 52px;
+  height:100vh;
+}
+.stage {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:24px;
+  overflow:hidden;
+}
+.slide-wrap {
+  width:100%;
+  max-width:960px;
+  aspect-ratio:16/9;
+  background:var(--surf);
+  border-radius:16px;
+  overflow:hidden;
+  box-shadow:0 32px 80px rgba(0,0,0,.6);
+  position:relative;
+}
+.slide {
+  display:none;
+  width:100%;
+  height:100%;
+  padding:48px 56px;
+  position:absolute;
+  top:0; left:0;
+  flex-direction:column;
+}
+.slide.active { display:flex; }
+
+/* ── CONTROLS ── */
+.controls {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:20px;
+  padding:10px;
+  background:#111;
+}
+.ctrl-btn {
+  background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.15);
+  color:#fff;
+  border-radius:8px;
+  padding:8px 22px;
+  font-family:'Inter',sans-serif;
+  font-size:13px;
+  font-weight:600;
+  cursor:pointer;
+  transition:background .14s;
+}
+.ctrl-btn:hover { background:rgba(255,255,255,.15); }
+.ctrl-btn:disabled { opacity:.3; cursor:default; }
+.slide-counter {
+  font-size:12px;
+  font-weight:600;
+  color:rgba(255,255,255,.5);
+  min-width:70px;
+  text-align:center;
+  font-family:'JetBrains Mono',monospace;
+}
+
+/* ── SLIDE CHROME ── */
+.slide-num {
+  position:absolute;
+  bottom:22px;
+  right:32px;
+  font-size:10.5px;
+  font-weight:700;
+  color:var(--bdr2);
+  font-family:'JetBrains Mono',monospace;
+  letter-spacing:.5px;
+}
+.slide-accent {
+  position:absolute;
+  top:0; left:0;
+  width:6px;
+  height:100%;
+  background:var(--cl);
+  border-radius:0;
+}
+
+/* ── TYPOGRAPHY ── */
+.eyebrow {
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:1.2px;
+  text-transform:uppercase;
+  color:var(--cl);
+  margin-bottom:8px;
+}
+h1 { font-size:38px; font-weight:800; line-height:1.15; color:var(--tx); }
+h2 { font-size:26px; font-weight:700; line-height:1.2; color:var(--tx); margin-bottom:6px; }
+h3 { font-size:14px; font-weight:700; color:var(--tx); margin-bottom:4px; }
+.sub { font-size:14px; color:var(--tx2); line-height:1.6; margin-top:8px; }
+.mono { font-family:'JetBrains Mono',monospace; font-size:12px; }
+
+/* ── LAYOUT HELPERS ── */
+.cols-2 { display:grid; grid-template-columns:1fr 1fr; gap:20px; flex:1; }
+.cols-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; flex:1; }
+.cols-13 { display:grid; grid-template-columns:1.2fr 1fr; gap:24px; flex:1; }
+.flex-col { display:flex; flex-direction:column; gap:10px; flex:1; }
+
+/* ── CARD ── */
+.card {
+  background:var(--surf2);
+  border:1.5px solid var(--bdr);
+  border-radius:10px;
+  padding:16px 18px;
+}
+.card.blue { background:var(--blueL); border-color:var(--blueB); }
+.card.orange { background:var(--clL); border-color:rgba(217,119,87,.35); }
+.card.green { background:var(--okL); border-color:var(--okB); }
+.card.warn { background:var(--warnL); border-color:var(--warnB); }
+.card.danger { background:var(--dangerL); border-color:var(--dangerB); }
+.card.purple { background:var(--purpleL); border-color:var(--purpleB); }
+.card.dark { background:#1C1917; border-color:#333; color:#fff; }
+
+/* ── FLOW / PIPELINE ── */
+.flow {
+  display:flex;
+  align-items:center;
+  gap:0;
+  flex:1;
+}
+.flow-step {
+  flex:1;
+  background:var(--surf2);
+  border:1.5px solid var(--bdr);
+  border-radius:10px;
+  padding:14px 16px;
+  text-align:center;
+}
+.flow-arr {
+  font-size:18px;
+  color:var(--cl);
+  padding:0 8px;
+  flex-shrink:0;
+  font-weight:700;
+}
+.flow-icon { font-size:24px; margin-bottom:6px; }
+.flow-label { font-size:12px; font-weight:700; color:var(--tx); }
+.flow-sub { font-size:10.5px; color:var(--tx3); margin-top:2px; line-height:1.4; }
+
+/* ── TAG ── */
+.tag {
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  font-size:10.5px;
+  font-weight:700;
+  padding:3px 9px;
+  border-radius:20px;
+  border:1px solid;
+  white-space:nowrap;
+}
+.tag-cl { background:var(--clL); color:var(--cl); border-color:rgba(217,119,87,.4); }
+.tag-ok { background:var(--okL); color:var(--ok); border-color:var(--okB); }
+.tag-warn { background:var(--warnL); color:var(--warn); border-color:var(--warnB); }
+.tag-danger { background:var(--dangerL); color:var(--danger); border-color:var(--dangerB); }
+.tag-blue { background:var(--blueL); color:var(--blue); border-color:var(--blueB); }
+.tag-purple { background:var(--purpleL); color:var(--purple); border-color:var(--purpleB); }
+
+/* ── BULLET LIST ── */
+.blist { display:flex; flex-direction:column; gap:7px; }
+.blist li {
+  list-style:none;
+  display:flex;
+  align-items:flex-start;
+  gap:8px;
+  font-size:13px;
+  color:var(--tx2);
+  line-height:1.5;
+}
+.blist li::before {
+  content:'•';
+  color:var(--cl);
+  font-weight:700;
+  flex-shrink:0;
+  margin-top:1px;
+}
+.blist li strong { color:var(--tx); }
+
+/* ── ARCH DIAGRAM ── */
+.arch-box {
+  border:2px solid var(--bdr2);
+  border-radius:12px;
+  overflow:hidden;
+}
+.arch-hd {
+  background:var(--surf2);
+  padding:8px 14px;
+  font-size:11px;
+  font-weight:700;
+  color:var(--tx3);
+  letter-spacing:.7px;
+  text-transform:uppercase;
+  border-bottom:1px solid var(--bdr);
+}
+.arch-body {
+  padding:14px;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+.arch-row {
+  display:flex;
+  gap:8px;
+  align-items:stretch;
+}
+.arch-chip {
+  flex:1;
+  background:var(--surf);
+  border:1.5px solid var(--bdr);
+  border-radius:8px;
+  padding:9px 12px;
+  text-align:center;
+}
+.arch-chip .ac-icon { font-size:18px; margin-bottom:3px; }
+.arch-chip .ac-label { font-size:11px; font-weight:700; color:var(--tx); }
+.arch-chip .ac-sub { font-size:9.5px; color:var(--tx3); margin-top:1px; }
+.arch-chip.hl { border-color:var(--cl); background:var(--clL); }
+.arch-chip.hl .ac-label { color:var(--clD); }
+
+/* ── CODE BLOCK ── */
+.code-block {
+  background:#1e1e1e;
+  border-radius:8px;
+  padding:14px 16px;
+  font-family:'JetBrains Mono',monospace;
+  font-size:11.5px;
+  color:#d4d4d4;
+  line-height:1.65;
+  overflow:hidden;
+}
+.code-block .kw { color:#569cd6; }
+.code-block .str { color:#ce9178; }
+.code-block .cm { color:#6a9955; }
+.code-block .fn { color:#dcdcaa; }
+.code-block .num { color:#b5cea8; }
+.code-block .key { color:#9cdcfe; }
+
+/* ── TITLE SLIDE ── */
+.title-slide {
+  background: linear-gradient(135deg, #1C1917 0%, #292524 60%, #3b2d2a 100%);
+  color:#fff;
+  justify-content:center;
+  align-items:flex-start;
+  padding:56px 64px;
+}
+.title-slide .eyebrow { color:var(--cl); opacity:.9; }
+.title-slide h1 { color:#fff; font-size:42px; max-width:700px; }
+.title-slide .sub { color:rgba(255,255,255,.6); font-size:16px; max-width:560px; margin-top:16px; }
+.title-slide .tags { display:flex; gap:10px; margin-top:28px; flex-wrap:wrap; }
+.title-grid {
+  position:absolute;
+  bottom:0; right:0;
+  width:340px; height:340px;
+  opacity:.07;
+  display:grid;
+  grid-template-columns:repeat(6,1fr);
+  grid-template-rows:repeat(6,1fr);
+  gap:4px;
+  padding:20px;
+}
+.tg-cell { background:#fff; border-radius:4px; }
+
+/* ── DIVIDER ── */
+.divider { height:1px; background:var(--bdr); margin:10px 0; }
+
+/* ── KV ── */
+.kv { display:flex; justify-content:space-between; align-items:center; font-size:12.5px; padding:4px 0; border-bottom:1px solid var(--bdr); }
+.kv:last-child { border-bottom:none; }
+.kv span:first-child { color:var(--tx3); }
+.kv strong { color:var(--tx); }
+
+/* ── SECTION LABEL ── */
+.sec-label {
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:1px;
+  text-transform:uppercase;
+  color:var(--tx3);
+  margin-bottom:12px;
+}
+
+/* ── CONFIDENCE BAND ── */
+.conf-band {
+  display:flex;
+  gap:0;
+  border-radius:8px;
+  overflow:hidden;
+  border:1.5px solid var(--bdr);
+  margin-top:auto;
+}
+.conf-seg {
+  flex:1;
+  padding:10px 12px;
+  text-align:center;
+}
+.conf-seg .cs-icon { font-size:16px; margin-bottom:3px; }
+.conf-seg .cs-label { font-size:10.5px; font-weight:700; }
+.conf-seg .cs-desc { font-size:9.5px; margin-top:1px; line-height:1.4; }
+
+/* ── PROGRESS BAR ── */
+.progress {
+  position:absolute;
+  bottom:0; left:0;
+  height:3px;
+  background:var(--cl);
+  transition:width .25s ease;
+  border-radius:0 0 0 0;
+}
+</style>
+</head>
+<body>
+<div class="shell">
+<div class="stage">
+<div class="slide-wrap">
+<div class="progress" id="progress"></div>
+
+<!-- ═══════ SLIDE 1: TITLE ═══════ -->
+<div class="slide title-slide active" id="s1">
+  <div class="title-grid" aria-hidden="true">
+    <div class="tg-cell"></div><div class="tg-cell"></div><div class="tg-cell"></div><div class="tg-cell"></div><div class="tg-cell"></div><div class="tg-cell"></div>
+    <div class="tg-cell"></div><div class="tg-cell"></div><div class="tg-cell"></div><div class="tg-cell"></div><div class="tg-cell"></div><div class="tg-cell"></div>
+    <div class="tg-cell"></div><div class="tg-cell"></div><div class="tg-cell"></div><div class="tg-cell"></div><div class="tg-cell"></div><div class="tg-cell"></div>
+    <div class="tg-cell"></div><div class="tg-cell"></div><div class="tg-cell"></div><div class="tg-cell"></div><div class="tg-cell"></div><div class="tg-cell"></div>
+    <div class="tg-cell"></div><div class="tg-cell"></div><div class="tg-cell"></div><div class="tg-cell"></div><div class="tg-cell"></div><div class="tg-cell"></div>
+    <div class="tg-cell"></div><div class="tg-cell"></div><div class="tg-cell"></div><div class="tg-cell"></div><div class="tg-cell"></div><div class="tg-cell"></div>
+  </div>
+  <div class="eyebrow">System Design & Architecture</div>
+  <h1>Advanced Prompting</h1>
+  <div class="sub">A guided, AI-powered workflow that turns plain-language intent into validated, structured results — without users needing to know how to write prompts.</div>
+  <div class="tags">
+    <span class="tag tag-cl">Netlify · Serverless</span>
+    <span class="tag tag-blue">Anthropic Claude API</span>
+    <span class="tag tag-ok">Vanilla JS · No Framework</span>
+    <span class="tag tag-purple">Two-Phase AI Pipeline</span>
+  </div>
+  <div class="slide-num">01 / 14</div>
+</div>
+
+<!-- ═══════ SLIDE 2: PRODUCT OVERVIEW ═══════ -->
+<div class="slide" id="s2">
+  <div class="slide-accent"></div>
+  <div class="eyebrow">Overview</div>
+  <h2>What the product does</h2>
+  <div class="sub" style="margin-bottom:20px">Most users don't know how to write effective AI prompts. Advanced Prompting solves this with a structured 3-step guided flow.</div>
+  <div class="flow" style="flex:1">
+    <div class="flow-step card orange">
+      <div class="flow-icon">📝</div>
+      <div class="flow-label">1 · Describe</div>
+      <div class="flow-sub">User types their need in plain language. Claude auto-fills structured fields.</div>
+    </div>
+    <div class="flow-arr">→</div>
+    <div class="flow-step card blue">
+      <div class="flow-icon">💬</div>
+      <div class="flow-label">2 · Review</div>
+      <div class="flow-sub">Claude shows what it understood. User confirms assumptions & fills gaps.</div>
+    </div>
+    <div class="flow-arr">→</div>
+    <div class="flow-step card green">
+      <div class="flow-icon">✅</div>
+      <div class="flow-label">3 · Results</div>
+      <div class="flow-sub">Claude generates output with confidence levels. User validates & exports.</div>
+    </div>
+  </div>
+  <div class="cols-3" style="flex:none;margin-top:16px">
+    <div style="font-size:12px;color:var(--tx2);padding:10px 0;border-top:2px solid var(--cl)"><strong style="color:var(--tx)">No prompt knowledge needed</strong> — plain English is enough</div>
+    <div style="font-size:12px;color:var(--tx2);padding:10px 0;border-top:2px solid var(--ok)"><strong style="color:var(--tx)">Validation before generation</strong> — Claude confirms intent first</div>
+    <div style="font-size:12px;color:var(--tx2);padding:10px 0;border-top:2px solid var(--blue)"><strong style="color:var(--tx)">Confidence-tagged output</strong> — uncertain sections flagged for review</div>
+  </div>
+  <div class="slide-num">02 / 14</div>
+</div>
+
+<!-- ═══════ SLIDE 3: HIGH-LEVEL ARCHITECTURE ═══════ -->
+<div class="slide" id="s3">
+  <div class="slide-accent"></div>
+  <div class="eyebrow">Architecture</div>
+  <h2>High-level system overview</h2>
+  <div class="cols-13" style="margin-top:16px">
+    <div>
+      <div class="arch-box">
+        <div class="arch-hd">Browser (Client)</div>
+        <div class="arch-body">
+          <div class="arch-row">
+            <div class="arch-chip hl">
+              <div class="ac-icon">🖥️</div>
+              <div class="ac-label">Single HTML Page</div>
+              <div class="ac-sub">All 3 screens in one file<br>Vanilla JS state machine</div>
+            </div>
+          </div>
+          <div class="arch-row">
+            <div class="arch-chip">
+              <div class="ac-icon">💾</div>
+              <div class="ac-label">Browser State</div>
+              <div class="ac-sub">CASES.merge JS object<br>No backend persistence</div>
+            </div>
+            <div class="arch-chip">
+              <div class="ac-icon">🎨</div>
+              <div class="ac-label">CSS Variables</div>
+              <div class="ac-sub">Design tokens<br>WCAG AA contrast</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="text-align:center;font-size:20px;color:var(--cl);margin:8px 0">↕</div>
+      <div class="arch-box">
+        <div class="arch-hd">Netlify CDN + Functions</div>
+        <div class="arch-body">
+          <div class="arch-row">
+            <div class="arch-chip">
+              <div class="ac-icon">⚡</div>
+              <div class="ac-label">claude-understand</div>
+              <div class="ac-sub">Haiku 4.5 · parse intent</div>
+            </div>
+            <div class="arch-chip">
+              <div class="ac-icon">⚡</div>
+              <div class="ac-label">claude-generate</div>
+              <div class="ac-sub">Sonnet/Opus · produce output</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="text-align:center;font-size:20px;color:var(--cl);margin:8px 0">↕</div>
+      <div class="arch-box">
+        <div class="arch-hd">Anthropic Claude API</div>
+        <div class="arch-body">
+          <div class="arch-row">
+            <div class="arch-chip">
+              <div class="ac-label">claude-haiku-4-5</div>
+              <div class="ac-sub">Parsing · fastest</div>
+            </div>
+            <div class="arch-chip">
+              <div class="ac-label">claude-sonnet-4-6</div>
+              <div class="ac-sub">Generation · balanced</div>
+            </div>
+            <div class="arch-chip">
+              <div class="ac-label">claude-opus-4-8</div>
+              <div class="ac-sub">Generation · most capable</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="flex-col">
+      <div class="card">
+        <h3>Key principles</h3>
+        <div style="margin-top:8px" class="blist">
+          <li><strong>No database</strong> — all session state lives in the browser. Zero server-side storage.</li>
+          <li><strong>No framework</strong> — pure HTML/CSS/JS. Zero build step, instant deploy.</li>
+          <li><strong>Serverless functions</strong> — two Node.js lambdas proxy the Anthropic API.</li>
+          <li><strong>JSON-first AI</strong> — assistant prefill forces valid JSON every time.</li>
+        </div>
+      </div>
+      <div class="card blue">
+        <h3 style="color:var(--blue)">Data flow summary</h3>
+        <div style="margin-top:6px;font-size:12px;color:var(--tx2);line-height:1.7">
+          User text → <span class="mono">/claude-understand</span> → structured intent JSON → Screen 2 review → confirmed intent → <span class="mono">/claude-generate</span> → sectioned output JSON → Screen 3
+        </div>
+      </div>
+      <div class="card" style="background:#1e1e1e;border-color:#333;color:#d4d4d4">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;line-height:1.8">
+          <span style="color:#6a9955">// No framework dependencies</span><br>
+          <span style="color:#569cd6">"dependencies"</span>: {<br>
+          &nbsp;&nbsp;<span style="color:#9cdcfe">"@anthropic-ai/sdk"</span>: <span style="color:#ce9178">"^0.39.0"</span><br>
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-num">03 / 14</div>
+</div>
+
+<!-- ═══════ SLIDE 4: DATA FLOW ═══════ -->
+<div class="slide" id="s4">
+  <div class="slide-accent"></div>
+  <div class="eyebrow">Data Flow</div>
+  <h2>End-to-end request pipeline</h2>
+  <div style="flex:1;display:flex;flex-direction:column;gap:12px;margin-top:16px">
+    <div style="display:flex;align-items:stretch;gap:8px">
+      <div style="width:28px;display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0">
+        <div style="width:28px;height:28px;border-radius:50%;background:var(--clL);color:var(--cl);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">1</div>
+        <div style="flex:1;width:2px;background:var(--bdr)"></div>
+      </div>
+      <div class="card" style="flex:1;padding:12px 16px;margin-bottom:4px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <strong style="font-size:13px">User describes task (Screen 1)</strong>
+          <span class="tag tag-cl">Browser</span>
+        </div>
+        <div style="font-size:12px;color:var(--tx2)">Plain text in paste zone → auto-fills goal, context, format, role, constraints fields. Stake level + model selected.</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:stretch;gap:8px">
+      <div style="width:28px;display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0">
+        <div style="width:28px;height:28px;border-radius:50%;background:var(--clL);color:var(--cl);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">2</div>
+        <div style="flex:1;width:2px;background:var(--bdr)"></div>
+      </div>
+      <div class="card blue" style="flex:1;padding:12px 16px;margin-bottom:4px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <strong style="font-size:13px">POST /claude-understand → parse intent</strong>
+          <span class="tag tag-blue">Haiku 4.5 · ~1s</span>
+        </div>
+        <div style="font-size:12px;color:var(--tx2)">Returns JSON: goal, ctx, fmt, role, con, stakes, interpretation (bullets), assumptions[], questions[]</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:stretch;gap:8px">
+      <div style="width:28px;display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0">
+        <div style="width:28px;height:28px;border-radius:50%;background:var(--clL);color:var(--cl);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">3</div>
+        <div style="flex:1;width:2px;background:var(--bdr)"></div>
+      </div>
+      <div class="card orange" style="flex:1;padding:12px 16px;margin-bottom:4px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <strong style="font-size:13px">User reviews + answers questions (Screen 2)</strong>
+          <span class="tag tag-cl">Browser</span>
+        </div>
+        <div style="font-size:12px;color:var(--tx2)">Confirms assumptions, answers gap-fill questions, optionally adds extra context. "Review updates" re-calls claude-understand with enriched context → questions drop to 0.</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:stretch;gap:8px">
+      <div style="width:28px;display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0">
+        <div style="width:28px;height:28px;border-radius:50%;background:var(--clL);color:var(--cl);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">4</div>
+        <div style="flex:1;width:2px;background:var(--bdr)"></div>
+      </div>
+      <div class="card green" style="flex:1;padding:12px 16px;margin-bottom:4px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <strong style="font-size:13px">POST /claude-generate → produce result</strong>
+          <span class="tag tag-ok">Sonnet 4.6 / Opus · 5–20s</span>
+        </div>
+        <div style="font-size:12px;color:var(--tx2)">Returns JSON: outputs[] with title, body (HTML), badge (bv/br/bd), badgeText, reasonKey + reasons{}. Assistant prefill "{" guarantees JSON.</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div style="width:28px;height:28px;border-radius:50%;background:var(--blueL);color:var(--blue);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">5</div>
+      <div class="card" style="flex:1;padding:12px 16px;background:var(--blueL);border-color:var(--blueB)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <strong style="font-size:13px;color:var(--blue)">User validates, edits, locks, exports (Screen 3)</strong>
+          <span class="tag tag-blue">Browser</span>
+        </div>
+        <div style="font-size:12px;color:var(--tx2)">Accepts sections, inline-edits, re-runs unlocked sections, exports HTML/PDF/text.</div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-num">04 / 14</div>
+</div>
+
+<!-- ═══════ SLIDE 5: FRONTEND ARCHITECTURE ═══════ -->
+<div class="slide" id="s5">
+  <div class="slide-accent"></div>
+  <div class="eyebrow">Frontend</div>
+  <h2>Single-page architecture (no framework)</h2>
+  <div class="cols-2" style="margin-top:14px">
+    <div class="flex-col">
+      <div class="card">
+        <h3>Screen routing</h3>
+        <div style="margin-top:8px;font-size:12px;color:var(--tx2);line-height:1.7">
+          Three <span class="mono">&lt;div class="screen"&gt;</span> elements always in the DOM. Active screen toggled via <span class="mono">.active</span> CSS class. No URL routing needed — state is ephemeral.
+        </div>
+      </div>
+      <div class="card orange">
+        <h3>State object — <span class="mono" style="font-size:12px">CASES.merge</span></h3>
+        <div style="margin-top:8px" class="blist">
+          <li><strong>goal, ctx, fmt, role, con</strong> — task fields</li>
+          <li><strong>interpretation, interpretationBullets</strong> — what Claude understood</li>
+          <li><strong>assumptions[], questions[]</strong> — gap analysis cards</li>
+          <li><strong>cardAnswers, cardSkipped, cardClarifications</strong> — user responses</li>
+          <li><strong>outputs[], reasons{}</strong> — generated result sections</li>
+          <li><strong>extraContext</strong> — user additions passed to generate</li>
+        </div>
+      </div>
+    </div>
+    <div class="flex-col">
+      <div class="card">
+        <h3>Right panel — context-aware</h3>
+        <div style="margin-top:6px;font-size:12px;color:var(--tx2)">Swaps content per screen: <em>How it works</em> on Describe, <em>Why this step</em> on Review, <em>Review guide + thinking flow</em> on Results.</div>
+      </div>
+      <div class="card blue">
+        <h3>Task type detection</h3>
+        <div style="margin-top:8px" class="blist">
+          <li><strong>jobsearch</strong> — career/salary/role keywords → tiered output layout</li>
+          <li><strong>prototype</strong> — html/ui/design/app keywords → HTML screen output</li>
+          <li><strong>document</strong> — resume/write/draft keywords → section layout</li>
+          <li><strong>generic</strong> — default → flexible sections</li>
+        </div>
+        <div style="margin-top:8px;font-size:11.5px;color:var(--tx3)">Detected client-side and sent to both serverless functions for specialized prompting.</div>
+      </div>
+      <div class="card">
+        <h3>Export system</h3>
+        <div style="margin-top:6px;font-size:12px;color:var(--tx2)">Export as-is (blob download) or Polish &amp; export (second Claude call). Prototype = multi-screen HTML with tab nav. Document = plain text or PDF-print.</div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-num">05 / 14</div>
+</div>
+
+<!-- ═══════ SLIDE 6: claude-understand ═══════ -->
+<div class="slide" id="s6">
+  <div class="slide-accent"></div>
+  <div class="eyebrow">Backend — Function 1</div>
+  <h2><span class="mono" style="font-size:22px">claude-understand</span> — intent parser</h2>
+  <div class="cols-2" style="margin-top:14px">
+    <div class="flex-col">
+      <div class="card">
+        <div class="kv"><span>Model</span><strong>claude-haiku-4-5-20251001</strong></div>
+        <div class="kv"><span>Max tokens</span><strong>1 024</strong></div>
+        <div class="kv"><span>Avg latency</span><strong>~0.8 – 1.5 s</strong></div>
+        <div class="kv"><span>Called when</span><strong>User clicks "Understand" or "Check"</strong></div>
+        <div class="kv"><span>Re-called when</span><strong>User clicks "Review updates" on Screen 2</strong></div>
+      </div>
+      <div class="card blue">
+        <h3>Output JSON schema</h3>
+        <div class="code-block" style="margin-top:8px;font-size:10px;padding:10px 12px">
+          {<br>
+          &nbsp;&nbsp;<span class="key">"goal"</span>: <span class="str">"1–3 sentence result"</span>,<br>
+          &nbsp;&nbsp;<span class="key">"ctx"</span>: <span class="str">"background info"</span>,<br>
+          &nbsp;&nbsp;<span class="key">"interpretation"</span>: <span class="str">"2–4 bullet sentences"</span>,<br>
+          &nbsp;&nbsp;<span class="key">"stakes"</span>: <span class="str">"low | med | high"</span>,<br>
+          &nbsp;&nbsp;<span class="key">"assumptions"</span>: [{<span class="key">"text"</span>:…, <span class="key">"risk"</span>:…}],<br>
+          &nbsp;&nbsp;<span class="key">"questions"</span>: [{<span class="key">"id"</span>:…, <span class="key">"q"</span>:…, <span class="key">"opts"</span>:[3]}]<br>
+          }
+        </div>
+      </div>
+    </div>
+    <div class="flex-col">
+      <div class="card orange">
+        <h3>Questions guidance (prompt rules)</h3>
+        <div style="margin-top:8px" class="blist">
+          <li><strong>Low stakes:</strong> 0 questions — just start</li>
+          <li><strong>Med stakes:</strong> 0–3 questions (only genuine gaps)</li>
+          <li><strong>High stakes:</strong> 1–5 questions (blockers only)</li>
+          <li>Each question has exactly 3 options</li>
+          <li>On re-parse with answers: question count drops significantly</li>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Re-parse enrichment (Review updates)</h3>
+        <div style="margin-top:8px;font-size:12px;color:var(--tx2);line-height:1.7">
+          Combines: original text + answered Q&amp;A + extra user context → sends to Haiku again.<br><br>
+          Result: fresh interpretation, updated assumptions, reduced questions. Preserved answers for question IDs that remain.
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-num">06 / 14</div>
+</div>
+
+<!-- ═══════ SLIDE 7: claude-generate ═══════ -->
+<div class="slide" id="s7">
+  <div class="slide-accent"></div>
+  <div class="eyebrow">Backend — Function 2</div>
+  <h2><span class="mono" style="font-size:22px">claude-generate</span> — output producer</h2>
+  <div class="cols-2" style="margin-top:14px">
+    <div class="flex-col">
+      <div class="card">
+        <div class="kv"><span>Default model</span><strong>claude-sonnet-4-6</strong></div>
+        <div class="kv"><span>Prototype model</span><strong>claude-haiku-4-5 (speed)</strong></div>
+        <div class="kv"><span>Max tokens</span><strong>3 000 (prototype) · 4 096 (other)</strong></div>
+        <div class="kv"><span>Avg latency</span><strong>5 – 20 s (Sonnet), 2 – 5 s (Haiku)</strong></div>
+        <div class="kv"><span>JSON guarantee</span><strong>Assistant prefill " { " </strong></div>
+      </div>
+      <div class="card" style="background:#1e1e1e;border-color:#333">
+        <div style="font-size:10px;font-weight:700;color:#888;letter-spacing:.8px;margin-bottom:8px;text-transform:uppercase">Assistant prefill technique</div>
+        <div class="code-block" style="padding:0;background:none;font-size:10.5px">
+          <span class="cm">// Forces JSON — Claude cannot say</span><br>
+          <span class="cm">// "Please share your files..."</span><br>
+          messages: [<br>
+          &nbsp;&nbsp;{ <span class="key">role</span>: <span class="str">'user'</span>, content: msg },<br>
+          &nbsp;&nbsp;{ <span class="key">role</span>: <span class="str">'assistant'</span>, content: <span class="str">'{'</span> }<br>
+          ]<br>
+          <span class="cm">// Prepend '{' before parsing</span><br>
+          <span class="kw">const</span> raw = <span class="str">'{'</span> + response.text;
+        </div>
+      </div>
+    </div>
+    <div class="flex-col">
+      <div class="card blue">
+        <h3>Task-type routing → specialised prompts</h3>
+        <div style="margin-top:8px" class="blist">
+          <li><strong>prototype</strong> — split into 2–3 HTML screen snippets (self-contained divs)</li>
+          <li><strong>jobsearch</strong> — roles/sectors + strategy + unknowns sections</li>
+          <li><strong>document</strong> — 2–3 logical sections, HTML body content</li>
+          <li><strong>generic</strong> — flexible 2–3 sections</li>
+        </div>
+      </div>
+      <div class="card orange">
+        <h3>Output structure</h3>
+        <div style="margin-top:8px;font-size:12px;color:var(--tx2);line-height:1.7">
+          Each output section carries: <strong>title</strong>, <strong>body</strong> (HTML), <strong>badge</strong> (bv/br/bd), <strong>badgeText</strong>, <strong>reasonKey</strong>.<br><br>
+          Reasons dict maps reasonKey → explanation shown when user clicks badge. References list = files actually used.
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-num">07 / 14</div>
+</div>
+
+<!-- ═══════ SLIDE 8: AI PIPELINE ═══════ -->
+<div class="slide" id="s8">
+  <div class="slide-accent"></div>
+  <div class="eyebrow">AI Design</div>
+  <h2>Two-phase AI pipeline</h2>
+  <div style="flex:1;display:flex;flex-direction:column;gap:14px;margin-top:16px">
+    <div style="display:grid;grid-template-columns:1fr 80px 1fr;gap:0;align-items:center">
+      <div class="card blue" style="padding:16px 20px">
+        <div style="font-size:10px;font-weight:700;color:var(--blue);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Phase 1 — Parse (claude-understand)</div>
+        <div class="kv" style="border-color:var(--blueB)"><span>Model</span><strong>Haiku 4.5</strong></div>
+        <div class="kv" style="border-color:var(--blueB)"><span>Purpose</span><strong>Understand intent</strong></div>
+        <div class="kv" style="border-color:var(--blueB)"><span>Tokens</span><strong>≤ 1 024</strong></div>
+        <div class="kv" style="border-color:var(--blueB);border-bottom:none"><span>Latency</span><strong>&lt; 2 s</strong></div>
+        <div style="margin-top:10px;font-size:11.5px;color:var(--tx2)">Cheap, fast. Run on every keystroke/re-parse. Fills Screen 2 interpretation + questions.</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:22px;color:var(--cl);font-weight:700">→</div>
+        <div style="font-size:9px;color:var(--tx3);margin-top:4px">confirmed<br>intent JSON</div>
+      </div>
+      <div class="card orange" style="padding:16px 20px">
+        <div style="font-size:10px;font-weight:700;color:var(--clD);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Phase 2 — Generate (claude-generate)</div>
+        <div class="kv"><span>Model</span><strong>Sonnet 4.6 / Opus 4.8</strong></div>
+        <div class="kv"><span>Purpose</span><strong>Produce final output</strong></div>
+        <div class="kv"><span>Tokens</span><strong>≤ 4 096</strong></div>
+        <div class="kv" style="border-bottom:none"><span>Latency</span><strong>5 – 20 s</strong></div>
+        <div style="margin-top:10px;font-size:11.5px;color:var(--tx2)">Runs once per "Run Next" or "Re-run". User chooses model. Locked sections never re-sent.</div>
+      </div>
+    </div>
+    <div class="cols-3">
+      <div class="card">
+        <h3>Separation of concerns</h3>
+        <div style="margin-top:6px;font-size:12px;color:var(--tx2)">Parse ≠ Generate. Haiku does the cheap validation; the expensive model only runs when the user is confident.</div>
+      </div>
+      <div class="card blue">
+        <h3>JSON contract enforcement</h3>
+        <div style="margin-top:6px;font-size:12px;color:var(--tx2)">System prompt mandates JSON. Assistant prefill <span class="mono">{</span> eliminates any conversational preamble. Three-pass <span class="mono">extractJSON</span> fallback handles minor malformations.</div>
+      </div>
+      <div class="card orange">
+        <h3>Re-run with lock</h3>
+        <div style="margin-top:6px;font-size:12px;color:var(--tx2)">User can lock accepted sections. Re-run sends the same prompt to generate only unlocked sections. Locked content is never touched.</div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-num">08 / 14</div>
+</div>
+
+<!-- ═══════ SLIDE 9: STATE MANAGEMENT ═══════ -->
+<div class="slide" id="s9">
+  <div class="slide-accent"></div>
+  <div class="eyebrow">State Design</div>
+  <h2>Browser-only state machine</h2>
+  <div class="cols-2" style="margin-top:14px">
+    <div class="flex-col">
+      <div class="card orange">
+        <h3>Why no backend database?</h3>
+        <div style="margin-top:8px" class="blist">
+          <li>Tasks are ephemeral — one session, one result</li>
+          <li>No user accounts needed for the prototype flow</li>
+          <li>Zero latency on state reads — all in memory</li>
+          <li>Privacy — nothing is persisted server-side</li>
+        </div>
+      </div>
+      <div class="card">
+        <h3>State transitions</h3>
+        <div style="margin-top:10px;font-size:12px;color:var(--tx2);line-height:2">
+          <span class="tag tag-cl" style="margin-right:6px">empty</span> → user types<br>
+          <span class="tag tag-cl" style="margin-right:6px">parsing</span> → Haiku call in flight<br>
+          <span class="tag tag-blue" style="margin-right:6px">parsed</span> → fields filled, Screen 2 ready<br>
+          <span class="tag tag-blue" style="margin-right:6px">reviewing</span> → user answering cards<br>
+          <span class="tag tag-ok" style="margin-right:6px">confirmed</span> → all cards answered<br>
+          <span class="tag tag-ok" style="margin-right:6px">generating</span> → Sonnet call in flight<br>
+          <span class="tag tag-ok" style="margin-right:6px">done</span> → output on Screen 3
+        </div>
+      </div>
+    </div>
+    <div class="flex-col">
+      <div class="card blue">
+        <h3>CASES.merge — key fields</h3>
+        <div style="margin-top:8px;font-size:11.5px;font-family:'JetBrains Mono',monospace;line-height:1.9;color:var(--tx2)">
+          <span style="color:var(--blue)">goal</span> · <span style="color:var(--blue)">ctx</span> · <span style="color:var(--blue)">fmt</span> · <span style="color:var(--blue)">role</span> · <span style="color:var(--blue)">con</span> · <span style="color:var(--blue)">stakes</span><br>
+          <span style="color:var(--cl)">interpretation</span> · <span style="color:var(--cl)">interpretationBullets[]</span><br>
+          <span style="color:var(--ok)">assumptions[]</span> · <span style="color:var(--ok)">questions[]</span><br>
+          <span style="color:var(--warn)">cardAnswers{}</span> · <span style="color:var(--warn)">cardSkipped(Set)</span><br>
+          <span style="color:var(--warn)">cardClarifications{}</span> · <span style="color:var(--warn)">extraContext</span><br>
+          <span style="color:var(--purple)">outputs[]</span> · <span style="color:var(--purple)">reasons{}</span>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Card answer persistence</h3>
+        <div style="margin-top:6px;font-size:12px;color:var(--tx2);line-height:1.65">
+          Answers are stored in <span class="mono">cardAnswers</span> (keyed by question ID). On Screen 2 re-render (doReviewAgain), answered cards are restored by <span class="mono">_restoreCardState()</span> and then hidden — they appear in the understanding summary instead.
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-num">09 / 14</div>
+</div>
+
+<!-- ═══════ SLIDE 10: CONFIDENCE SYSTEM ═══════ -->
+<div class="slide" id="s10">
+  <div class="slide-accent"></div>
+  <div class="eyebrow">Output Design</div>
+  <h2>Confidence badge system</h2>
+  <div style="flex:1;display:flex;flex-direction:column;gap:16px;margin-top:16px">
+    <div class="conf-band">
+      <div class="conf-seg" style="background:var(--okL);border-right:1px solid var(--bdr)">
+        <div class="cs-icon">✓</div>
+        <div class="cs-label" style="color:var(--ok)">bv — High confidence</div>
+        <div class="cs-desc" style="color:var(--tx2)">Factual, straightforward. Claude is sure. Accept without hesitation.</div>
+      </div>
+      <div class="conf-seg" style="background:var(--warnL);border-right:1px solid var(--bdr)">
+        <div class="cs-icon">⚠</div>
+        <div class="cs-label" style="color:var(--warn)">br — Review recommended</div>
+        <div class="cs-desc" style="color:var(--tx2)">Style choices made, interpretation involved. Worth checking.</div>
+      </div>
+      <div class="conf-seg" style="background:var(--dangerL)">
+        <div class="cs-icon">⚠️</div>
+        <div class="cs-label" style="color:var(--danger)">bd — Needs validation</div>
+        <div class="cs-desc" style="color:var(--tx2)">Numbers, facts, legal/financial items. Claude is not 100% sure. Must verify.</div>
+      </div>
+    </div>
+    <div class="cols-3">
+      <div class="card green">
+        <h3>Rendering — bv sections</h3>
+        <div style="margin-top:6px;font-size:12px;color:var(--tx2)">White background, blue border badge. Default "Accept 🔒" button. User locks and moves on.</div>
+      </div>
+      <div class="card warn">
+        <h3>Rendering — br sections</h3>
+        <div style="margin-top:6px;font-size:12px;color:var(--tx2)">White background, amber badge. "Edit ✏" + "Accept" buttons. Encourage a read-through before accepting.</div>
+      </div>
+      <div class="card danger">
+        <h3>Rendering — bd sections</h3>
+        <div style="margin-top:6px;font-size:12px;color:var(--tx2)">Red tinted background. Grouped under "Needs your validation" header at bottom. "Edit" only — must correct before accepting.</div>
+      </div>
+    </div>
+    <div class="card blue">
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <strong>Why this matters:</strong>
+        <div style="font-size:12.5px;color:var(--tx2)">Users are shown EXACTLY where to focus attention. High-confidence content is not cluttered with caveats. Uncertain content is visually distinct and cannot be accidentally accepted without review.</div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-num">10 / 14</div>
+</div>
+
+<!-- ═══════ SLIDE 11: DEPLOYMENT ═══════ -->
+<div class="slide" id="s11">
+  <div class="slide-accent"></div>
+  <div class="eyebrow">Deployment</div>
+  <h2>Netlify infrastructure</h2>
+  <div class="cols-2" style="margin-top:14px">
+    <div class="flex-col">
+      <div class="card">
+        <h3>Build &amp; publish</h3>
+        <div class="code-block" style="margin-top:10px;font-size:10.5px">
+          <span class="cm"># netlify.toml</span><br>
+          [<span class="fn">build</span>]<br>
+          &nbsp;&nbsp;<span class="key">publish</span> = <span class="str">"public"</span><br>
+          &nbsp;&nbsp;<span class="key">command</span> = <span class="str">"npm install"</span><br><br>
+          [<span class="fn">functions</span>]<br>
+          &nbsp;&nbsp;<span class="key">directory</span> = <span class="str">"netlify/functions"</span><br>
+          &nbsp;&nbsp;<span class="key">node_bundler</span> = <span class="str">"nft"</span><br><br>
+          [[<span class="fn">redirects</span>]]<br>
+          &nbsp;&nbsp;<span class="key">from</span> = <span class="str">"/api/*"</span><br>
+          &nbsp;&nbsp;<span class="key">to</span> = <span class="str">"/.netlify/functions/:splat"</span>
+        </div>
+      </div>
+      <div class="card orange">
+        <h3>Environment</h3>
+        <div style="margin-top:8px" class="blist">
+          <li><strong>ANTHROPIC_API_KEY</strong> — Netlify env variable (never in code)</li>
+          <li><strong>Node ≥ 18</strong> — runtime for both functions</li>
+          <li><strong>NFT bundler</strong> — tree-shakes SDK to minimal size</li>
+        </div>
+      </div>
+    </div>
+    <div class="flex-col">
+      <div class="card blue">
+        <h3>Function limits &amp; design choices</h3>
+        <div style="margin-top:8px" class="blist">
+          <li><strong>10 s timeout</strong> — free plan limit. Prototype uses Haiku (2–5 s) to stay under.</li>
+          <li><strong>No cold starts</strong> on recent Netlify plans — functions stay warm.</li>
+          <li><strong>Zero dependencies</strong> other than <span class="mono">@anthropic-ai/sdk</span> — fast bundling.</li>
+          <li><strong>CORS headers</strong> on all responses — functions are called directly from browser.</li>
+        </div>
+      </div>
+      <div class="card">
+        <h3>CI / CD</h3>
+        <div style="margin-top:6px;font-size:12px;color:var(--tx2);line-height:1.65">
+          Every push to the feature branch triggers a Netlify deploy preview. Merge to main = production deploy. Checks: "Pages changed", "Header rules", "Redirect rules".
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-num">11 / 14</div>
+</div>
+
+<!-- ═══════ SLIDE 12: TECH STACK ═══════ -->
+<div class="slide" id="s12">
+  <div class="slide-accent"></div>
+  <div class="eyebrow">Technology</div>
+  <h2>Full stack summary</h2>
+  <div class="cols-3" style="margin-top:16px">
+    <div class="flex-col">
+      <div class="sec-label">Frontend</div>
+      <div class="card">
+        <div class="kv"><span>Language</span><strong>HTML5 / CSS3 / ES2022 JS</strong></div>
+        <div class="kv"><span>Framework</span><strong>None — vanilla</strong></div>
+        <div class="kv"><span>Fonts</span><strong>Inter + JetBrains Mono</strong></div>
+        <div class="kv"><span>Icons</span><strong>Unicode — no icon lib</strong></div>
+        <div class="kv"><span>Build</span><strong>None — static HTML</strong></div>
+        <div class="kv"><span>Bundle size</span><strong>~50 KB (HTML only)</strong></div>
+      </div>
+    </div>
+    <div class="flex-col">
+      <div class="sec-label">Backend</div>
+      <div class="card">
+        <div class="kv"><span>Runtime</span><strong>Node.js ≥ 18</strong></div>
+        <div class="kv"><span>Functions</span><strong>2 serverless lambdas</strong></div>
+        <div class="kv"><span>SDK</span><strong>@anthropic-ai/sdk ^0.39</strong></div>
+        <div class="kv"><span>Bundler</span><strong>NFT (Node File Tracing)</strong></div>
+        <div class="kv"><span>Auth</span><strong>API key in env vars</strong></div>
+        <div class="kv"><span>Storage</span><strong>None</strong></div>
+      </div>
+    </div>
+    <div class="flex-col">
+      <div class="sec-label">AI / Infra</div>
+      <div class="card">
+        <div class="kv"><span>Parse model</span><strong>Haiku 4.5</strong></div>
+        <div class="kv"><span>Generate models</span><strong>Haiku / Sonnet 4.6 / Opus 4.8</strong></div>
+        <div class="kv"><span>Provider</span><strong>Anthropic Claude API</strong></div>
+        <div class="kv"><span>Hosting</span><strong>Netlify (CDN + Functions)</strong></div>
+        <div class="kv"><span>CI / CD</span><strong>Netlify GitHub integration</strong></div>
+        <div class="kv"><span>Preview</span><strong>Per-PR deploy previews</strong></div>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:14px" class="card blue">
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+      <strong>Design philosophy:</strong>
+      <div style="font-size:12.5px;color:var(--tx2)">Minimum viable dependencies. Everything that CAN be done in vanilla browser JS IS done there. Server code only exists to proxy the API key. This means zero framework lock-in, zero bundler config, and instant deploy.</div>
+    </div>
+  </div>
+  <div class="slide-num">12 / 14</div>
+</div>
+
+<!-- ═══════ SLIDE 13: KEY DECISIONS ═══════ -->
+<div class="slide" id="s13">
+  <div class="slide-accent"></div>
+  <div class="eyebrow">Design Decisions</div>
+  <h2>Why we built it this way</h2>
+  <div class="cols-2" style="margin-top:14px">
+    <div class="flex-col">
+      <div class="card orange">
+        <h3>Two-API pipeline (not one big call)</h3>
+        <div style="margin-top:6px;font-size:12px;color:var(--tx2);line-height:1.6">
+          Parsing and generating are different problems. Haiku (cheap + fast) handles intent parsing with 100% reliability. Sonnet/Opus (expensive) only runs once the user has confirmed intent — no wasted tokens on misunderstood requests.
+        </div>
+      </div>
+      <div class="card blue">
+        <h3>Assistant prefill <span class="mono" style="font-size:11px">" { "</span> for JSON</h3>
+        <div style="margin-top:6px;font-size:12px;color:var(--tx2);line-height:1.6">
+          JSON-only instructions in a system prompt can be ignored when Claude senses a conversational context. Prefilling the assistant turn with <span class="mono">{</span> makes it architecturally impossible for Claude to start with prose — the token is already committed.
+        </div>
+      </div>
+      <div class="card">
+        <h3>No database</h3>
+        <div style="margin-top:6px;font-size:12px;color:var(--tx2);line-height:1.6">
+          Sessions are single-use. Persisting them server-side adds auth, GDPR surface, and infra cost for zero user benefit. Browser state is wiped on tab close — which is intentional for a prompt-drafting tool.
+        </div>
+      </div>
+    </div>
+    <div class="flex-col">
+      <div class="card green">
+        <h3>Task-type specialisation</h3>
+        <div style="margin-top:6px;font-size:12px;color:var(--tx2);line-height:1.6">
+          A generic "write stuff" prompt produces mediocre results. Prototype tasks need HTML screen divs; job search tasks need tiered salary analysis; document tasks need logical sections. Routing to specialised prompts dramatically improves output quality.
+        </div>
+      </div>
+      <div class="card">
+        <h3>Validate before generate</h3>
+        <div style="margin-top:6px;font-size:12px;color:var(--tx2);line-height:1.6">
+          Screen 2 exists purely to surface Claude's assumptions and fill information gaps BEFORE burning tokens on full generation. The cost of a re-parse (Haiku, &lt;$0.001) is negligible compared to a wrong Sonnet generation.
+        </div>
+      </div>
+      <div class="card danger">
+        <h3>Confidence-first output</h3>
+        <div style="margin-top:6px;font-size:12px;color:var(--tx2);line-height:1.6">
+          Showing everything as "here's your answer" is dangerous for high-stakes tasks. The bv/br/bd badge system forces Claude to self-assess and directs user attention to exactly where human judgment is needed.
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-num">13 / 14</div>
+</div>
+
+<!-- ═══════ SLIDE 14: FUTURE / SUMMARY ═══════ -->
+<div class="slide" id="s14">
+  <div class="slide-accent"></div>
+  <div class="eyebrow">Summary</div>
+  <h2>Architecture at a glance</h2>
+  <div class="cols-3" style="margin-top:16px">
+    <div class="flex-col">
+      <div class="sec-label">What runs where</div>
+      <div class="card">
+        <div class="kv"><span>🌐 Browser</span><strong>All UI, routing, state</strong></div>
+        <div class="kv"><span>⚡ Netlify Fn</span><strong>API key proxy only</strong></div>
+        <div class="kv"><span>🤖 Claude API</span><strong>Parse + generate JSON</strong></div>
+        <div class="kv"><span>📦 CDN</span><strong>Static HTML + assets</strong></div>
+      </div>
+      <div class="card orange">
+        <div class="kv"><span>Total server code</span><strong>441 lines (2 files)</strong></div>
+        <div class="kv"><span>Frontend code</span><strong>~2 500 lines (1 file)</strong></div>
+        <div class="kv"><span>Dependencies</span><strong>1 (Anthropic SDK)</strong></div>
+        <div class="kv"><span>Build time</span><strong>&lt; 10 s</strong></div>
+      </div>
+    </div>
+    <div class="flex-col">
+      <div class="sec-label">Reliability patterns</div>
+      <div class="card blue">
+        <div style="margin-top:2px" class="blist">
+          <li>Assistant prefill → guaranteed JSON</li>
+          <li>Three-pass extractJSON → handles malformations</li>
+          <li>Task-type routing → specialised prompts</li>
+          <li>Re-parse with answers → questions drop to 0</li>
+          <li>Answered cards hidden → clean UX</li>
+          <li>Error hints by type → timeout vs key vs unknown</li>
+        </div>
+      </div>
+    </div>
+    <div class="flex-col">
+      <div class="sec-label">Potential next steps</div>
+      <div class="card">
+        <div style="margin-top:2px" class="blist">
+          <li>Streaming responses for faster perceived generation</li>
+          <li>Session history via localStorage</li>
+          <li>File content reading (not just name chips)</li>
+          <li>Prompt templates library</li>
+          <li>Multi-turn refinement loop</li>
+          <li>Auth + saved sessions (Supabase / Clerk)</li>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:auto;padding-top:12px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--bdr)">
+    <div style="font-size:12px;color:var(--tx3)">Advanced Prompting — System Architecture</div>
+    <div style="display:flex;gap:8px">
+      <span class="tag tag-cl">Netlify</span>
+      <span class="tag tag-blue">Anthropic Claude</span>
+      <span class="tag tag-ok">Vanilla JS</span>
+    </div>
+  </div>
+  <div class="slide-num">14 / 14</div>
+</div>
+
+</div><!-- slide-wrap -->
+</div><!-- stage -->
+
+<div class="controls">
+  <button class="ctrl-btn" id="prevBtn" onclick="navigate(-1)" disabled>← Prev</button>
+  <span class="slide-counter" id="counter">1 / 14</span>
+  <button class="ctrl-btn" id="nextBtn" onclick="navigate(1)">Next →</button>
+</div>
+</div><!-- shell -->
+
+<script>
+const TOTAL = 14;
+let cur = 1;
+
+function navigate(dir) {
+  const next = cur + dir;
+  if (next < 1 || next > TOTAL) return;
+  document.getElementById('s' + cur).classList.remove('active');
+  cur = next;
+  document.getElementById('s' + cur).classList.add('active');
+  document.getElementById('counter').textContent = cur + ' / ' + TOTAL;
+  document.getElementById('prevBtn').disabled = cur === 1;
+  document.getElementById('nextBtn').disabled = cur === TOTAL;
+  document.getElementById('progress').style.width = ((cur / TOTAL) * 100) + '%';
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') navigate(1);
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   navigate(-1);
+});
+
+// Init progress bar
+document.getElementById('progress').style.width = ((1 / TOTAL) * 100) + '%';
+</script>
+</body>
+</html>
