@@ -2129,14 +2129,66 @@ function doExport() {
   const c = CASES[currentCase];
   const container = document.getElementById('output-content');
   const taskType = detectTaskType(c.goal);
+  const acceptedOutputs = c.outputs.filter((_, i) => locked.has('os'+(i+1)));
+  const includedOutputs = acceptedOutputs.length > 0 ? acceptedOutputs : c.outputs;
 
-  // Export options are task-type aware (not hardcoded to demo case names)
+  const polishLabels = {
+    prototype: 'Claude integrates all accepted screens into one polished, navigable HTML prototype.',
+    document: 'Claude merges accepted sections into a single clean, final document.',
+    jobsearch: 'Claude writes a polished career strategy summary from your accepted sections.',
+    generic: 'Claude combines and refines accepted sections into a final clean result.'
+  };
+
+  const exportHTML = `<div class="export-panel">
+    <div class="export-hd">
+      <div class="export-hd-icon">&#10003;</div>
+      <div style="flex:1">
+        <strong style="font-size:15px;display:block;margin-bottom:2px;">Ready — how would you like to finalise?</strong>
+        <span style="font-size:12px;color:var(--tx2);">${includedOutputs.length} section${includedOutputs.length!==1?'s':''} accepted</span>
+      </div>
+    </div>
+    <div class="export-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+        <div style="border:2px solid var(--bdr);border-radius:12px;padding:16px;cursor:pointer;transition:all .14s;" onmouseover="this.style.borderColor='var(--cl)'" onmouseout="this.style.borderColor='var(--bdr)'" onclick="showFormatExport()">
+          <div style="font-size:22px;margin-bottom:8px">📦</div>
+          <div style="font-size:14px;font-weight:700;margin-bottom:4px">Export as-is</div>
+          <div style="font-size:12px;color:var(--tx2);line-height:1.5">Download your validated sections exactly as reviewed. Fast — no extra wait.</div>
+          <div style="margin-top:10px"><span style="font-size:12px;font-weight:600;color:var(--cl)">Choose format →</span></div>
+        </div>
+        <div style="border:2px solid var(--bdr);border-radius:12px;padding:16px;cursor:pointer;transition:all .14s;" onmouseover="this.style.borderColor='var(--cl)'" onmouseout="this.style.borderColor='var(--bdr)'" onclick="doFinalPolish()">
+          <div style="font-size:22px;margin-bottom:8px">✨</div>
+          <div style="font-size:14px;font-weight:700;margin-bottom:4px">Polish &amp; export</div>
+          <div style="font-size:12px;color:var(--tx2);line-height:1.5">${polishLabels[taskType] || polishLabels.generic} Takes ~15–30s.</div>
+          <div style="margin-top:10px"><span style="font-size:12px;font-weight:600;color:var(--cl)">Let Claude finalise →</span></div>
+        </div>
+      </div>
+      <div id="export-format-area" style="display:none"></div>
+      <div id="export-status-msg" style="display:none;margin-top:8px;font-size:12.5px;font-weight:600;color:var(--ok);padding:7px 11px;background:var(--okL);border:1px solid var(--okB);border-radius:7px;"></div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:9px;margin-top:14px;padding:11px 14px;background:var(--surf2);border:1px solid var(--bdr);border-radius:8px;font-size:12.5px;color:var(--tx2);">
+    <span style="font-size:15px;flex-shrink:0">ℹ</span>
+    <span>To keep quality high and prevent errors, Claude recommends starting a new session for your next task.</span>
+  </div>`;
+
+  const existing = container.querySelector('.export-panel');
+  if (existing) existing.remove();
+  container.insertAdjacentHTML('beforeend', exportHTML);
+  container.querySelector('.export-panel').scrollIntoView({behavior:'smooth',block:'center'});
+}
+
+function showFormatExport() {
+  const c = CASES[currentCase];
+  const taskType = detectTaskType(c.goal);
+  const area = document.getElementById('export-format-area');
+  if (!area) return;
+
   let exportOpts = '';
   if (taskType === 'prototype') {
     exportOpts = `
       <div class="export-opt selected" data-format="html" onclick="selectExport(this)"><div class="export-opt-icon">🌐</div><div class="export-opt-label">HTML file</div><div class="export-opt-desc">Open in browser</div></div>
       <div class="export-opt" data-format="code" onclick="selectExport(this)"><div class="export-opt-icon">📋</div><div class="export-opt-label">Copy code</div><div class="export-opt-desc">Paste into editor</div></div>
-      <div class="export-opt" data-format="pdf" onclick="selectExport(this)"><div class="export-opt-icon">📄</div><div class="export-opt-label">Write-up PDF</div><div class="export-opt-desc">Document describing the prototype</div></div>
+      <div class="export-opt" data-format="pdf" onclick="selectExport(this)"><div class="export-opt-icon">📄</div><div class="export-opt-label">Write-up only</div><div class="export-opt-desc">Text description</div></div>
     `;
   } else if (taskType === 'document') {
     exportOpts = `
@@ -2158,43 +2210,76 @@ function doExport() {
     `;
   }
 
-  const isProto = taskType === 'prototype';
+  area.style.display = 'block';
+  area.innerHTML = `
+    <div style="font-size:13px;font-weight:600;margin-bottom:8px;">Choose format:</div>
+    <div class="export-opts">${exportOpts}</div>
+    <div style="display:flex;gap:10px;margin-top:14px;align-items:center;">
+      <button class="btn-p" onclick="exportDownload()">Download →</button>
+      <button class="btn-o" onclick="exportCopy()">Copy to clipboard</button>
+    </div>`;
+}
+
+async function doFinalPolish() {
+  const c = CASES[currentCase];
+  const taskType = detectTaskType(c.goal);
+  const container = document.getElementById('output-content');
+  const panel = container.querySelector('.export-panel');
+  if (panel) panel.remove();
+
   const acceptedOutputs = c.outputs.filter((_, i) => locked.has('os'+(i+1)));
-  const includedOutputs = acceptedOutputs.length > 0 ? acceptedOutputs : c.outputs;
-  const readyTitle = isProto
-    ? `Your prototype is ready — ${includedOutputs.length} screen${includedOutputs.length!==1?'s':''} combined`
-    : 'Your result is ready';
+  const sections = acceptedOutputs.length > 0 ? acceptedOutputs : c.outputs;
 
-  const exportHTML = `<div class="export-panel">
-    <div class="export-hd">
-      <div class="export-hd-icon">&#10003;</div>
-      <div style="flex:1"><strong style="font-size:15px;display:block;margin-bottom:2px;">${readyTitle}</strong>
-      <span style="font-size:12px;color:var(--tx2);">${isProto ? 'Accepted screens will be combined into one HTML file.' : 'All sections reviewed. Choose how to save or share.'}</span></div>
-    </div>
-    <div class="export-body">
-      <div style="font-size:13px;font-weight:600;margin-bottom:4px;">What was included:</div>
-      <div style="font-size:12.5px;color:var(--tx2);margin-bottom:12px;line-height:1.7;">
-        ${includedOutputs.map(o => '&#10003; ' + o.title).join('<br>')}
-      </div>
-      <div style="font-size:13px;font-weight:600;margin-bottom:4px;">Choose a format:</div>
-      <div class="export-opts">${exportOpts}</div>
-      <div style="display:flex;gap:10px;margin-top:16px;align-items:center;flex-wrap:wrap;">
-        <button class="btn-p" onclick="exportDownload()">Download →</button>
-        <button class="btn-o" onclick="exportCopy()">Copy to clipboard</button>
-        <span style="font-size:11.5px;color:var(--tx3);margin-left:auto;">You can also keep editing — go back anytime.</span>
-      </div>
-      <div id="export-status-msg" style="display:none;margin-top:8px;font-size:12.5px;font-weight:600;color:var(--ok);padding:7px 11px;background:var(--okL);border:1px solid var(--okB);border-radius:7px;"></div>
-    </div>
-  </div>
-  <div style="display:flex;align-items:center;gap:9px;margin-top:14px;padding:11px 14px;background:var(--surf2);border:1px solid var(--bdr);border-radius:8px;font-size:12.5px;color:var(--tx2);">
-    <span style="font-size:15px;flex-shrink:0">ℹ</span>
-    <span>To keep quality high and prevent errors, Claude recommends starting a new session for your next task.</span>
-  </div>`;
+  // Show spinner while polishing
+  container.insertAdjacentHTML('beforeend', `<div id="polish-spinner" style="text-align:center;padding:40px 20px">
+    <div class="spinner" style="margin:0 auto 14px"></div>
+    <div style="font-size:14px;font-weight:600;margin-bottom:4px">Claude is creating your final output…</div>
+    <div style="font-size:12px;color:var(--tx3)">Combining your accepted sections into a polished result.</div>
+  </div>`);
 
-  const existing = container.querySelector('.export-panel');
-  if (existing) existing.remove();
-  container.insertAdjacentHTML('beforeend', exportHTML);
-  container.querySelector('.export-panel').scrollIntoView({behavior:'smooth',block:'center'});
+  try {
+    const sectionsText = sections.map(s =>
+      `### ${s.title}\n${(s.body || s.txt || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()}`
+    ).join('\n\n');
+
+    const res = await fetch('/.netlify/functions/claude-generate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        goal: c.goal, ctx: c.ctx, fmt: c.fmt, role: c.role, con: c.con,
+        stakes: c.stakes, model: CASES.merge.model || 'sonnet46',
+        interpretation: c.interpretation,
+        taskType, finalPolish: true,
+        extraContext: `User-validated sections to combine:\n\n${sectionsText}`
+      })
+    });
+    const data = await res.json();
+    const spinner = document.getElementById('polish-spinner');
+    if (spinner) spinner.remove();
+
+    if (!data.error && data.outputs && data.outputs.length) {
+      // Store polished outputs and re-render the results screen with polished content
+      CASES.merge.outputs = data.outputs;
+      CASES.merge.reasons = data.reasons || {};
+      locked = new Set(); // reset locks so user can review the polished output
+      renderOutput();
+      // Show success note at top
+      const container2 = document.getElementById('output-content');
+      const note = document.createElement('div');
+      note.style.cssText = 'background:var(--okL);border:1.5px solid var(--okB);border-radius:10px;padding:12px 16px;margin-bottom:14px;font-size:13px;color:var(--ok);font-weight:600;';
+      note.innerHTML = '✓ Claude has polished your final output — review it below, then click Done to export.';
+      container2.insertBefore(note, container2.firstChild);
+    } else {
+      throw new Error(data.error || 'Empty response');
+    }
+  } catch(e) {
+    const spinner = document.getElementById('polish-spinner');
+    if (spinner) spinner.remove();
+    container.insertAdjacentHTML('beforeend', `<div style="background:var(--warnL);border:1.5px solid var(--warnB);border-radius:10px;padding:14px 16px;margin-top:12px;font-size:13px;">
+      <strong style="color:var(--warn)">Polish failed</strong> — ${e.message}
+      <button class="btn-o" style="margin-left:12px;font-size:12px;padding:4px 10px;" onclick="this.parentElement.remove();doExport()">Export as-is instead</button>
+    </div>`);
+  }
 }
 
 function _getExportContent() {

@@ -15,6 +15,43 @@ function detectTaskType(goal) {
   return 'generic';
 }
 
+function buildFinalPolishPrompt(taskType, role, con) {
+  const instructions = {
+    prototype: `You are combining user-validated HTML screens into one final polished prototype.
+The user has reviewed draft screens and the extraContext contains the accepted ones.
+Create a single, complete, navigable HTML prototype that integrates all the accepted screens.
+Return ONE output section titled "Final Prototype" with the complete HTML page as the body (use single quotes for all HTML attributes).
+Badge: "bv". BadgeText: "✓ Final prototype".`,
+    document: `You are creating the final polished document from user-validated sections.
+The user has reviewed draft sections and the extraContext contains the accepted ones.
+Combine them into one seamless, well-structured final document — smooth out transitions, remove draft markers.
+Return ONE output section with the complete document as the body.
+Badge: "bv". BadgeText: "✓ Final document".`,
+    jobsearch: `You are writing a final career strategy summary from user-validated sections.
+The user has reviewed and accepted specific career recommendations.
+Combine them into a clean, professional career strategy summary — clear headings, action steps, salary guidance.
+Return 1–2 output sections. Badge: "bv".`,
+    generic: `You are creating the final polished result from user-validated sections.
+The user has accepted specific sections. Combine and refine them into a single coherent final output.
+Return 1–2 output sections. Badge: "bv".`
+  };
+
+  return `You are Claude creating a FINAL polished output from user-validated draft sections.
+${role ? `\nACT AS: ${role}` : ''}
+${con ? `\nHARD CONSTRAINTS (never violate):\n${con}` : ''}
+
+${instructions[taskType] || instructions.generic}
+
+Return this exact JSON shape:
+{
+  "outputs": [{ "title": "string", "body": "HTML content", "badge": "bv", "badgeText": "✓ Final result", "reasonKey": "r1" }],
+  "reasons": { "r1": "<strong>Final output:</strong> combined from user-validated sections" },
+  "references": []
+}
+
+IMPORTANT: Return ONLY valid JSON. No markdown, no preamble.`;
+}
+
 function buildSystemPrompt(stakes, role, con, taskType) {
   const stakesNote = {
     low:  'LOW stakes — be concise. Fewer caveats. Just get it done.',
@@ -217,7 +254,7 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid JSON body' }) };
   }
 
-  const { goal, ctx, fmt, role, con, stakes, model, interpretation, answers, files, taskType: clientTaskType, extraContext } = body;
+  const { goal, ctx, fmt, role, con, stakes, model, interpretation, answers, files, taskType: clientTaskType, extraContext, finalPolish } = body;
   const taskType = clientTaskType || detectTaskType(goal);
 
   if (!goal) {
@@ -253,7 +290,7 @@ exports.handler = async (event) => {
     const message = await client.messages.create({
       model: selectedModel,
       max_tokens: maxTokens,
-      system: buildSystemPrompt(stakes, role, con, taskType),
+      system: finalPolish ? buildFinalPolishPrompt(taskType, role, con) : buildSystemPrompt(stakes, role, con, taskType),
       messages: [{ role: 'user', content: userMessage }]
     });
 
