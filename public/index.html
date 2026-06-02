@@ -353,9 +353,7 @@ textarea.inp:focus-visible{outline:none;border-color:var(--cl);box-shadow:0 0 0 
     <span class="step-arr">›</span>
     <div class="step" id="stp2" onclick="goStep(2)"><span class="step-n">2</span>Review</div>
     <span class="step-arr">›</span>
-    <div class="step" id="stp3"><span class="step-n">3</span>Working</div>
-    <span class="step-arr">›</span>
-    <div class="step" id="stp4" onclick="goStep(4)"><span class="step-n">4</span>Results</div>
+    <div class="step" id="stp3"><span class="step-n">3</span>Results</div>
   </div>
   <div class="content">
 
@@ -383,7 +381,7 @@ textarea.inp:focus-visible{outline:none;border-color:var(--cl);box-shadow:0 0 0 
             <span class="pz-input-hd-title">Describe your task</span>
             <button class="btn-ghost" onclick="closePasteInput()" style="font-size:12px" aria-label="Close">✕ Close</button>
           </div>
-          <textarea class="pz-textarea" id="pz-text" placeholder="Example: 'I have two resumes — mine and a friend's. Merge them so my resume uses the writing style of the second one, but keep my actual experience unchanged.'"></textarea>
+          <textarea class="pz-textarea" id="pz-text" placeholder="Example: 'I have two resumes — mine and a friend's. Merge them so my resume uses the writing style of the second one, but keep my actual experience unchanged.'" oninput="updateCheckBtnState()"></textarea>
           <div class="pz-input-foot">
             <span class="pz-hint">Write naturally — Claude understands plain language</span>
             <input type="file" id="pz-file-input" multiple style="display:none" onchange="handlePzFiles(this)">
@@ -426,7 +424,7 @@ textarea.inp:focus-visible{outline:none;border-color:var(--cl);box-shadow:0 0 0 
         </div>
         <div class="bc-body" id="body-goal" style="display:none">
           <div class="bc-desc">Be specific about the end result you want — not just the topic.</div>
-          <textarea class="inp" id="inp-goal" rows="3" placeholder="e.g. Rewrite my resume using the style and structure of my friend's resume, without changing my actual experience" aria-label="Goal"></textarea>
+          <textarea class="inp" id="inp-goal" rows="3" placeholder="e.g. Rewrite my resume using the style and structure of my friend's resume, without changing my actual experience" aria-label="Goal" oninput="updateCheckBtnState()"></textarea>
         </div>
       </div>
 
@@ -577,7 +575,7 @@ textarea.inp:focus-visible{outline:none;border-color:var(--cl);box-shadow:0 0 0 
       </div>
 
       <div style="display:flex;align-items:center;gap:13px;margin-top:8px;padding:14px 0">
-        <button class="btn-p" onclick="goStep(2)">Check my request →</button>
+        <button class="btn-p" id="check-btn" onclick="checkDescribeAndProceed()" style="opacity:0.4;cursor:not-allowed" disabled title="Please describe your task first (or load an example)">Check my request →</button>
         <span style="font-size:12px;color:var(--tx3)">Claude will show you what it understood before starting.</span>
       </div>
     </div>
@@ -590,10 +588,10 @@ textarea.inp:focus-visible{outline:none;border-color:var(--cl);box-shadow:0 0 0 
         <div style="font-size:13px;color:var(--tx3)" id="clarify-sub">This takes less than a minute and helps get it right the first time.</div>
       </div>
 
-      <!-- Skip all — FIX #4: at the TOP, not bottom -->
+      <!-- Skip all — at the TOP -->
       <div id="skip-top-bar" style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:10px 14px;background:var(--surf2);border-radius:8px;border:1px solid var(--bdr);">
         <span style="font-size:12.5px;color:var(--tx2);flex:1;">Don't want to answer questions? That's fine.</span>
-        <button class="btn-o" onclick="goStep(3)" style="font-size:12px;padding:6px 14px;">Skip all — just do it →</button>
+        <button class="btn-o" onclick="skipAllAndRun()" style="font-size:12px;padding:6px 14px;">Skip all — just do it →</button>
       </div>
 
       <div class="interp-card" id="interp-card">
@@ -628,31 +626,7 @@ textarea.inp:focus-visible{outline:none;border-color:var(--cl);box-shadow:0 0 0 
       </div>
     </div>
 
-    <!-- ═══════════════ SCREEN 3: WORKING (was "Running") — FIX #5: plain language ═══════════════ -->
-    <div class="screen" id="sc-running">
-      <div class="run-center">
-        <div class="spinner"></div>
-        <div style="max-width:440px;text-align:center">
-          <div class="run-title" id="run-title">Claude is <span>working on your request</span></div>
-          <div style="font-size:13px;color:var(--tx3);margin-top:6px;line-height:1.65" id="run-sub">
-            Using what you confirmed. This usually takes 15–30 seconds.
-          </div>
-        </div>
-        <div style="width:340px;background:var(--surf2);border:1px solid var(--bdr);border-radius:12px;padding:16px 18px;text-align:left">
-          <div style="font-size:11.5px;font-weight:600;color:var(--tx3);margin-bottom:10px;letter-spacing:.5px;text-transform:uppercase">Progress</div>
-          <div class="rs" id="rs1">◦ Reading your request and answers</div>
-          <div class="rs" id="rs2">◦ Applying your rules</div>
-          <div class="rs" id="rs3">◦ Writing the result piece by piece</div>
-          <div class="rs" id="rs4">◦ Checking for anything uncertain</div>
-          <div class="rs" id="rs5">◦ Preparing your review</div>
-        </div>
-        <div style="font-size:12px;color:var(--tx3);max-width:360px;text-align:center;line-height:1.6">
-          Next, you'll be able to <strong style="color:var(--tx2)">read each section</strong>, see where Claude was unsure, edit anything, and lock the parts you're happy with.
-        </div>
-      </div>
-    </div>
-
-    <!-- ═══════════════ SCREEN 4: RESULTS (was "Output") ═══════════════ -->
+    <!-- ═══════════════ SCREEN 3: RESULTS ═══════════════ -->
     <div class="screen" id="sc-output">
       <div id="output-content"></div>
     </div>
@@ -730,6 +704,7 @@ function closePasteInput() {
 function loadDemo() {
   openPasteInput();
   document.getElementById('pz-text').value = CASES[currentCase].prompt;
+  updateCheckBtnState();
 }
 
 function startParsing() {
@@ -794,6 +769,14 @@ function fillParsed(c) {
     addBtn.textContent = '+ Attach file';
     fc.appendChild(addBtn);
   }
+
+  // Store interpretation as bullets array for preservation across edits
+  if (c.interpretation && !c.interpretationBullets) {
+    c.interpretationBullets = c.interpretation.split(/(?<=[.!?])\s+/).filter(s => s.trim());
+  }
+
+  // Enable "Check my request" button now that form is filled
+  updateCheckBtnState();
 
   setTimeout(() => { document.getElementById('bc-goal').scrollIntoView({behavior:'smooth',block:'center'}); }, 200);
 }
@@ -1013,42 +996,88 @@ function togglePhases(btn) {
   document.getElementById('phase-section').style.display = isOn ? 'none' : 'block';
 }
 
-/* ═══════════════ CLARIFY — FIX #2, #4: stakes-aware + skip at top ═══════════════ */
+/* ═══════════════ CLARIFY ═══════════════ */
 function renderClarify() {
   chipsEdited = false;
-  // Clear extra-details textarea on each entry to this screen
   const edInp = document.getElementById('extra-details');
   if (edInp) edInp.value = '';
-  // reset gate on each clarify render — check happens on click only
   const c = CASES[currentCase];
   const banner = document.getElementById('stakes-banner');
   const skipBar = document.getElementById('skip-top-bar');
   const interpCard = document.getElementById('interp-card');
   const qArea = document.getElementById('questions-area');
 
-  // Interpretation
-  // Render interpretation as bullet points by splitting on sentences
-  const sentences = c.interpretation.split(/(?<=[.!?])\s+/).filter(s => s.trim());
+  // Hide old static assumptions section (we render them as interactive cards below)
+  const assmLbl = document.querySelector('.assm-lbl');
+  const assmRow = document.getElementById('assm-row');
+  if (assmLbl) assmLbl.style.display = 'none';
+  if (assmRow) { assmRow.innerHTML = ''; assmRow.style.display = 'none'; }
+
+  // Render interpretation as bullet points — use stored bullets array if available
+  const bullets = c.interpretationBullets || c.interpretation.split(/(?<=[.!?])\s+/).filter(s => s.trim());
+  if (!c.interpretationBullets) c.interpretationBullets = bullets;
   const bulletHTML = '<ul style="list-style:none;padding:0;margin:0">' +
-    sentences.map(s => '<li style="display:flex;gap:8px;margin-bottom:7px;font-style:normal"><span style="color:var(--cl);font-weight:700;flex-shrink:0;margin-top:2px">•</span><span>' + s + '</span></li>').join('') +
+    bullets.map(s => '<li style="display:flex;gap:8px;margin-bottom:7px;font-style:normal"><span style="color:var(--cl);font-weight:700;flex-shrink:0;margin-top:2px">•</span><span>' + s + '</span></li>').join('') +
     '</ul>';
   document.getElementById('interp-quote').innerHTML = bulletHTML;
-  const assm = document.getElementById('assm-row');
-  assm.innerHTML = '';
-  c.assumptions.forEach(a => {
-    const item = document.createElement('div');
-    item.style.cssText = 'display:flex;gap:7px;align-items:flex-start;font-size:12.5px;color:var(--tx2);line-height:1.5;';
-    const icon = a.risk ? '⚠' : '•';
-    const iconColor = a.risk ? 'var(--danger)' : 'var(--cl)';
-    const suffix = a.risk ? ' <span style="font-size:11px;color:var(--danger);font-style:italic">(please verify)</span>' : '';
-    item.innerHTML = '<span style="color:' + iconColor + ';font-weight:700;flex-shrink:0;margin-top:1px">' + icon + '</span><span>' + a.text + suffix + '</span>';
-    assm.appendChild(item);
+
+  // Questions/assumptions area
+  qArea.innerHTML = '';
+
+  // Role context card — show Claude's persona so user sees context continuity
+  const roleVal = (document.getElementById('inp-role') || {}).value || (c.role || '');
+  if (roleVal && roleVal.trim()) {
+    const roleCard = document.createElement('div');
+    roleCard.style.cssText = 'background:var(--blueL);border:1.5px solid var(--blueB);border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:10px;';
+    roleCard.innerHTML = '<span style="font-size:18px">🎭</span><div><div style="font-size:10.5px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.6px;margin-bottom:2px">Acting as</div><div style="font-size:13px;color:var(--tx)">' + roleVal.trim() + '</div></div>';
+    qArea.appendChild(roleCard);
+  }
+
+  const hasCards = c.assumptions.length > 0 || c.questions.length > 0;
+
+  // Section header for assumptions
+  if (c.assumptions.length > 0) {
+    const hdr = document.createElement('div');
+    hdr.style.cssText = 'font-size:11.5px;font-weight:700;color:var(--tx3);margin-bottom:10px;text-transform:uppercase;letter-spacing:.6px;';
+    hdr.textContent = 'Please confirm my assumptions';
+    qArea.appendChild(hdr);
+  }
+
+  // ALL assumptions as interactive qcards (not static text)
+  c.assumptions.forEach((a, idx) => {
+    const qId = 'qa-assm-' + idx;
+    const isRisk = a.risk;
+    const questionText = a.q || (isRisk ? 'Does this assumption match your intent?' : 'Is this correct?');
+    const whyText = a.why || (isRisk ? 'This is a key assumption that affects the result.' : 'Confirming this helps Claude get it right.');
+    const opts = a.opts || (isRisk ? ['Yes, confirmed', 'No — clarify below'] : ['Yes, correct', 'Adjust below']);
+    const numLabel = isRisk
+      ? '<span style="color:var(--danger)">⚠ Verify assumption</span>'
+      : '<span style="color:var(--tx3)">My assumption</span>';
+    const card = document.createElement('div');
+    card.className = 'qcard';
+    card.id = qId;
+    card.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <div class="qcard-num" style="flex:1">${numLabel}</div>
+        <button class="q-skip-inline" onclick="skipAssumption('${qId}')">Skip this</button>
+      </div>
+      <div class="qcard-q">${questionText}</div>
+      <div class="qcard-why">→ ${whyText}</div>
+      <div style="font-size:12px;color:var(--tx2);margin-bottom:9px;padding:7px 10px;background:var(--surf2);border-radius:6px;border-left:3px solid ${isRisk?'var(--danger)':'var(--cl)'}">${a.text}</div>
+      <div class="q-opts">${opts.map(o => `<span class="q-opt" onclick="selAssumption(this,'${qId}')">${o}</span>`).join('')}</div>
+    `;
+    qArea.appendChild(card);
   });
 
-  // Questions
-  qArea.innerHTML = '';
+  // Regular questions
   if (c.questions.length > 0) {
-    c.questions.forEach((q, idx) => {
+    if (c.assumptions.length > 0) {
+      const divider = document.createElement('div');
+      divider.style.cssText = 'font-size:11.5px;font-weight:700;color:var(--tx3);margin-bottom:10px;margin-top:16px;text-transform:uppercase;letter-spacing:.6px;';
+      divider.textContent = 'A few more questions';
+      qArea.appendChild(divider);
+    }
+    c.questions.forEach(q => {
       const card = document.createElement('div');
       card.className = 'qcard';
       card.id = q.id;
@@ -1059,47 +1088,40 @@ function renderClarify() {
         </div>
         <div class="qcard-q">${q.q}</div>
         <div class="qcard-why">→ ${q.why}</div>
-        <div class="q-opts">${q.opts.map((o,i) => `<span class="q-opt${i===0?' sel':''}" onclick="selQ(this,'${q.id}')">${o}</span>`).join('')}</div>
+        <div class="q-opts">${q.opts.map(o => `<span class="q-opt" onclick="selQ(this,'${q.id}')">${o}</span>`).join('')}</div>
       `;
       qArea.appendChild(card);
     });
   }
-  // Auto-generate question cards for risky assumptions that have a question defined
-  c.assumptions.filter(a => a.risk && a.q).forEach((a, idx) => {
-    const qId = 'qa-assm-' + idx;
-    const card = document.createElement('div');
-    card.className = 'qcard';
-    card.id = qId;
-    card.innerHTML = `
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-        <div class="qcard-num" style="flex:1;color:var(--danger)">⚠ Confirming my assumption</div>
-        <button class="q-skip-inline" onclick="skipQ('${qId}',this)">Skip this</button>
-      </div>
-      <div class="qcard-q">${a.q}</div>
-      <div class="qcard-why">→ ${a.why}</div>
-      <div class="q-opts">${a.opts.map((o,i) => `<span class="q-opt${i===0?' sel':''}" onclick="selQ(this,'${qId}')">${o}</span>`).join('')}</div>
-    `;
-    qArea.appendChild(card);
-  });
 
-  // FIX #2: Separate visual treatment per stake level
+  // Disable Run button until all cards resolved
+  const runBtn = document.getElementById('looks-good-btn');
+  if (runBtn) {
+    runBtn.disabled = hasCards;
+    runBtn.style.opacity = hasCards ? '0.4' : '';
+    runBtn.style.cursor = hasCards ? 'not-allowed' : '';
+    runBtn.title = hasCards ? 'Please confirm or skip all assumptions above' : '';
+  }
+
+  // Stakes banners
   if (stakes === 'low') {
     banner.innerHTML = `<div style="background:var(--sLowL);border:1.5px solid var(--sLowB);border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:12px;">
       <span style="font-size:20px">&#9998;</span>
       <div style="flex:1"><div style="font-size:13.5px;font-weight:600;color:var(--sLow);margin-bottom:2px">Quick draft — ready to go</div>
       <div style="font-size:12px;color:var(--tx2)">This is low-stakes, so Claude will just get started. You can fix things in the result.</div></div>
-      <button class="btn-p" onclick="goStep(3)" style="font-size:13px;padding:9px 18px">Just do it →</button>
+      <button class="btn-p" onclick="skipAllAndRun()" style="font-size:13px;padding:9px 18px">Just do it →</button>
     </div>`;
     document.getElementById('clarify-title').textContent = 'Ready to go';
     document.getElementById('clarify-sub').textContent = 'Quick draft — Claude will make reasonable guesses and get started.';
     interpCard.style.display = 'block';
     skipBar.style.display = 'none';
-    qArea.querySelectorAll('.qcard').forEach(c => c.style.display = 'none');
+    qArea.querySelectorAll('.qcard').forEach(qc => qc.style.display = 'none');
+    if (runBtn) { runBtn.disabled = false; runBtn.style.opacity = ''; runBtn.style.cursor = ''; runBtn.title = ''; }
   } else if (stakes === 'med') {
     banner.innerHTML = `<div style="background:var(--sMedL);border:1.5px solid var(--sMedB);border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:12px;">
       <span style="font-size:20px">&#9650;</span>
       <div style="flex:1"><div style="font-size:13.5px;font-weight:600;color:var(--sMed);margin-bottom:2px">Medium priority — a quick check will help</div>
-      <div style="font-size:12px;color:var(--tx2)">Answer what you can. Skip anything you're not sure about.</div></div>
+      <div style="font-size:12px;color:var(--tx2)">Confirm what you can. Skip anything you're not sure about.</div></div>
     </div>`;
     document.getElementById('clarify-title').textContent = 'Let me check I understood';
     document.getElementById('clarify-sub').textContent = 'A few things to confirm before I start.';
@@ -1128,6 +1150,90 @@ function showReviewGate() {
   if(rvBtn) rvBtn.style.display = 'inline-flex';
 }
 let chipsEdited = false;
+
+/* ─── Assumption / question card state ─── */
+function checkAssumptionStatus() {
+  const cards = document.querySelectorAll('.qcard');
+  if (!cards.length) return true;
+  for (const card of cards) {
+    if (card.style.display === 'none') continue;
+    if (!card.classList.contains('skipped') && !card.dataset.answered) return false;
+  }
+  return true;
+}
+function updateRunBtn() {
+  const btn = document.getElementById('looks-good-btn');
+  if (!btn) return;
+  const allDone = checkAssumptionStatus();
+  btn.disabled = !allDone;
+  btn.style.opacity = allDone ? '' : '0.4';
+  btn.style.cursor = allDone ? '' : 'not-allowed';
+  btn.title = allDone ? '' : 'Please confirm or skip all assumptions above';
+}
+function selAssumption(el, cardId) {
+  document.querySelectorAll('#'+cardId+' .q-opt').forEach(o => o.classList.remove('sel'));
+  el.classList.add('sel');
+  const card = document.getElementById(cardId);
+  if (card) card.dataset.answered = 'true';
+  updateRunBtn();
+}
+function skipAssumption(cardId) {
+  const card = document.getElementById(cardId);
+  if (!card) return;
+  const btn = card.querySelector('.q-skip-inline');
+  if (card.classList.contains('skipped')) {
+    card.classList.remove('skipped');
+    delete card.dataset.answered;
+    if (btn) btn.textContent = 'Skip this';
+  } else {
+    card.classList.add('skipped');
+    card.dataset.answered = 'true';
+    if (btn) btn.textContent = 'Undo skip';
+  }
+  updateRunBtn();
+}
+function skipAllAndRun() {
+  document.querySelectorAll('.qcard').forEach(card => {
+    if (card.style.display === 'none') return;
+    card.classList.add('skipped');
+    card.dataset.answered = 'true';
+    const btn = card.querySelector('.q-skip-inline');
+    if (btn) btn.textContent = 'Undo skip';
+  });
+  goStep(3);
+}
+
+/* ─── Describe page validation ─── */
+function isDescribeFormValid() {
+  const goal = document.getElementById('inp-goal');
+  const hasGoal = goal && goal.value.trim().length > 0;
+  const banner = document.getElementById('pz-banner');
+  const hasParsed = banner && banner.style.display !== 'none';
+  const pzText = document.getElementById('pz-text');
+  const hasPzText = pzText && pzText.value.trim().length > 0;
+  return hasGoal || hasParsed || hasPzText;
+}
+function updateCheckBtnState() {
+  const btn = document.getElementById('check-btn');
+  if (!btn) return;
+  const valid = isDescribeFormValid();
+  btn.disabled = !valid;
+  btn.style.opacity = valid ? '' : '0.4';
+  btn.style.cursor = valid ? '' : 'not-allowed';
+  btn.title = valid ? '' : 'Please describe your task first (or load an example)';
+}
+function checkDescribeAndProceed() {
+  if (!isDescribeFormValid()) {
+    const pz = document.getElementById('pz-empty');
+    if (pz && pz.style.display !== 'none') {
+      pz.style.borderColor = 'var(--danger)';
+      setTimeout(() => { pz.style.borderColor = ''; }, 1500);
+    }
+    return;
+  }
+  goStep(2);
+}
+
 function startChipEdit(chip, isRisk) {
   const current = chip.dataset.original || chip.textContent.replace('⚠ ','').replace('✎','').trim();
   const inp = document.createElement('input');
@@ -1155,14 +1261,16 @@ function startChipEdit(chip, isRisk) {
 }
 function handleLooksGood() {
   if (chipsEdited) {
-    // Show the warning and Review button; don't proceed
     const banner = document.getElementById('review-needed-banner');
     const rvBtn = document.getElementById('review-again-btn');
     if(banner) { banner.style.display = 'block'; banner.scrollIntoView({behavior:'smooth',block:'nearest'}); }
     if(rvBtn) rvBtn.style.display = 'inline-flex';
     return;
   }
-  // Clear extra-details textarea and reset all bullet modifications before proceeding
+  if (!checkAssumptionStatus()) {
+    updateRunBtn();
+    return;
+  }
   const ed = document.getElementById('extra-details');
   if (ed) ed.value = '';
   const ul = document.querySelector('#interp-quote ul');
@@ -1196,6 +1304,14 @@ async function doReviewAgain() {
         const sm = {low:{stakesLabel:'&#9998; Quick draft',stakesClass:'tag-low'},med:{stakesLabel:'&#9650; Medium',stakesClass:'tag-medium'},high:{stakesLabel:'&#9888; Must be right',stakesClass:'tag-high'}};
         if (sm[data.stakes]) { data.stakesLabel = sm[data.stakes].stakesLabel; data.stakesClass = sm[data.stakes].stakesClass; }
         data.outputs = CASES.merge.outputs; data.reasons = CASES.merge.reasons;
+        // Preserve original bullets and append the extra detail as a new bullet
+        const origBullets = CASES.merge.interpretationBullets || (CASES.merge.interpretation || '').split(/(?<=[.!?])\s+/).filter(s => s.trim());
+        let extraBullet = extra.trim();
+        if (!/[.!?]$/.test(extraBullet)) extraBullet += '.';
+        extraBullet = extraBullet.charAt(0).toUpperCase() + extraBullet.slice(1);
+        // Only add bullet if not already present
+        const already = origBullets.some(b => b.toLowerCase().includes(extra.trim().toLowerCase().slice(0, 20)));
+        data.interpretationBullets = already ? origBullets : [...origBullets, extraBullet];
         Object.assign(CASES.merge, data);
         renderClarify();
       }
@@ -1297,17 +1413,23 @@ function onExtraDetailsInput() {
 function selQ(el, cardId) {
   document.querySelectorAll('#'+cardId+' .q-opt').forEach(o => o.classList.remove('sel'));
   el.classList.add('sel');
+  const card = document.getElementById(cardId);
+  if (card) card.dataset.answered = 'true';
+  updateRunBtn();
 }
 function skipQ(cardId, btn) {
   const card = document.getElementById(cardId);
   if (card.classList.contains('skipped')) {
     card.classList.remove('skipped');
+    delete card.dataset.answered;
     btn.textContent = 'Skip this';
   } else {
     card.classList.add('skipped');
+    card.dataset.answered = 'true';
     btn.textContent = 'Undo skip';
     if (document.querySelectorAll('.qcard.skipped').length >= 1) document.getElementById('skip-warn').style.display='block';
   }
+  updateRunBtn();
 }
 
 /* ═══════════════ OUTPUT RENDERING ═══════════════ */
@@ -1326,6 +1448,7 @@ function renderOutput() {
         Click status tags for details · Hover <span style="background:var(--blueL);border-bottom:2px solid #93C5FD;padding:0 4px;border-radius:2px">blue text</span> for Claude's notes · ✏ Edit inline · Lock &#128274; the parts you're happy with
       </div>
     </div>
+    <button class="btn-o" onclick="goStep(2)" style="font-size:12.5px;padding:7px 14px;flex-shrink:0">← Back to Review</button>
   </div>`;
 
   // Screen-by-screen nav for multi-screen outputs (e.g. prototype)
@@ -1378,9 +1501,8 @@ function renderOutput() {
 
 /* ═══════════════ NAVIGATION ═══════════════ */
 const PANELS = {
-  builder: `<div class="rp-hd">How this works</div><div class="rp-sec"><div class="rp-card"><strong>Step 1: Describe</strong>Tell Claude what you need. Paste a description or fill in the fields.</div><div class="rp-card"><strong>Step 2: Review</strong>Claude shows you what it understood. Correct anything before it starts.</div><div class="rp-card"><strong>Step 3: Results</strong>Review each section. Edit, lock what's good, and re-run the rest.</div></div>`,
-  clarify: `<div class="rp-hd">Why this step?</div><div class="rp-sec"><div class="rp-card"><strong>Catching mistakes now</strong>It's much faster to correct a misunderstanding before Claude writes the full result than after.</div><div class="rp-card"><strong>You're in control</strong>Skip any question. Claude will mark its guesses so you can check them later.</div></div>`,
-  running: `<div class="rp-hd">Working</div><div class="rp-sec"><div class="rp-card">Claude is writing your result. This usually takes 15–30 seconds.</div></div>`,
+  builder: `<div class="rp-hd">How this works</div><div class="rp-sec"><div class="rp-card"><strong>Step 1: Describe</strong>Tell Claude what you need. Paste a description or fill in the fields.</div><div class="rp-card"><strong>Step 2: Review</strong>Claude shows what it understood and asks for confirmation before starting.</div><div class="rp-card"><strong>Step 3: Results</strong>Review each section. Edit, lock what's good, and re-run the rest.</div></div>`,
+  clarify: `<div class="rp-hd">Why this step?</div><div class="rp-sec"><div class="rp-card"><strong>Catching mistakes now</strong>It's much faster to correct a misunderstanding before Claude writes the full result than after.</div><div class="rp-card"><strong>You're in control</strong>Confirm or skip each assumption. Claude will mark its guesses so you can check them later.</div></div>`,
   output: `<div class="rp-hd">Review guide</div><div class="rp-sec"><div class="rp-card"><strong>Status tags</strong>Click any coloured tag to see why Claude is confident or uncertain about that section.</div><div class="rp-card"><strong>Blue underlines</strong>Hover over blue-underlined text to see Claude's notes and assumptions.</div><div class="rp-card"><strong>Lock &#128274;</strong>When a section is right, lock it. Locked sections won't change if you re-run.</div><div class="rp-card"><strong>Edit ✏</strong>Click edit to change text directly. Save when done.</div><div class="rp-card"><strong>Unlock ✎</strong>Accidentally accepted a section? Click Unlock to re-open it.</div></div>
 <div class="rp-hd" style="margin-top:4px;">Claude's thinking flow</div>
 <div class="rp-sec">
@@ -1400,12 +1522,11 @@ function showScreen(name) {
   document.getElementById('rpanel').innerHTML = PANELS[name]||PANELS.output;
   updateStepBar(name);
   if (name==='clarify') renderClarify();
-  if (name==='output') { renderOutput(); setTimeout(renderThinkingFlow, 100); setTimeout(renderOutputRightPanel, 120); setTimeout(updateRerunBtn, 150); }
 }
 function updateStepBar(name) {
-  const map = {builder:1,clarify:2,running:3,output:4};
+  const map = {builder:1,clarify:2,output:3};
   const cur = map[name]||1;
-  for(let i=1;i<=4;i++){
+  for(let i=1;i<=3;i++){
     const s=document.getElementById('stp'+i);
     if(!s)continue;
     s.classList.remove('active','done');
@@ -1416,19 +1537,28 @@ function updateStepBar(name) {
 function goStep(step) {
   if(step===1) showScreen('builder');
   else if(step===2) showScreen('clarify');
-  else if(step===3){ showScreen('running'); animateRun(() => doGenerate().then(() => showScreen('output'))); }
-  else if(step===4) showScreen('output');
+  else if(step===3) startGenerate();
 }
-function animateRun(done){
-  const ids=['rs1','rs2','rs3','rs4','rs5'];
-  const labels=['Reading your request and answers','Applying your rules','Writing the result piece by piece','Checking for anything uncertain','Preparing your review'];
-  ids.forEach((id,i)=>{const e=document.getElementById(id);if(e){e.className='rs';e.textContent='◦ '+labels[i];}});
-  let i=0;
-  const iv=setInterval(()=>{
-    if(i>0){const p=document.getElementById(ids[i-1]);if(p){p.classList.remove('active');p.classList.add('done');p.textContent='✓ '+labels[i-1];}}
-    if(i<ids.length){const c=document.getElementById(ids[i]);if(c){c.classList.add('active');c.textContent='⟳ '+labels[i]+'…';}i++;}
-    else{clearInterval(iv);setTimeout(done,350);}
-  },380);
+function startGenerate() {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  const sc = document.getElementById('sc-output');
+  if (sc) sc.classList.add('active');
+  document.getElementById('rpanel').innerHTML = PANELS['output'];
+  updateStepBar('output');
+  const container = document.getElementById('output-content');
+  container.innerHTML = `<div class="run-center" style="min-height:55vh">
+    <div class="spinner"></div>
+    <div style="max-width:440px;text-align:center">
+      <div class="run-title">Claude is <span>working on your request</span></div>
+      <div style="font-size:13px;color:var(--tx3);margin-top:6px;line-height:1.65">This usually takes 15–30 seconds.</div>
+    </div>
+  </div>`;
+  doGenerate().then(() => {
+    renderOutput();
+    setTimeout(renderThinkingFlow, 100);
+    setTimeout(renderOutputRightPanel, 120);
+    setTimeout(updateRerunBtn, 150);
+  });
 }
 
 /* ═══════════════ OUTPUT INTERACTIONS ═══════════════ */
@@ -1592,12 +1722,19 @@ function updateRerunBtn() {
 let rerunCount = 0;
 function startRerun() {
   rerunCount++;
-  const prevLocked = new Set(locked); // save before renderOutput resets it
-  showScreen('running');
-  document.getElementById('run-title').innerHTML = 'Claude is <span>updating your result</span>';
-  document.getElementById('run-sub').textContent = 'Only re-running the unlocked sections. Locked parts stay exactly as they are.';
-  animateRun(() => {
-    showScreen('output'); // renderOutput() resets locked = new Set()
+  const prevLocked = new Set(locked);
+  const container = document.getElementById('output-content');
+  container.innerHTML = `<div class="run-center" style="min-height:55vh">
+    <div class="spinner"></div>
+    <div style="max-width:440px;text-align:center">
+      <div class="run-title">Claude is <span>updating your result</span></div>
+      <div style="font-size:13px;color:var(--tx3);margin-top:6px;line-height:1.65">Only re-running the unlocked sections. Locked parts stay exactly as they are.</div>
+    </div>
+  </div>`;
+  doGenerate().then(() => {
+    renderOutput(); // renderOutput() resets locked = new Set()
+    setTimeout(renderThinkingFlow, 100);
+    setTimeout(renderOutputRightPanel, 120);
 
     // Re-apply previously locked sections so they stay locked
     prevLocked.forEach(secId => {
@@ -1744,6 +1881,10 @@ function doExport() {
       </div>
       <div id="export-status-msg" style="display:none;margin-top:8px;font-size:12.5px;font-weight:600;color:var(--ok);padding:7px 11px;background:var(--okL);border:1px solid var(--okB);border-radius:7px;"></div>
     </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:9px;margin-top:14px;padding:11px 14px;background:var(--surf2);border:1px solid var(--bdr);border-radius:8px;font-size:12.5px;color:var(--tx2);">
+    <span style="font-size:15px;flex-shrink:0">ℹ</span>
+    <span>To keep quality high and prevent errors, Claude recommends starting a new session for your next task.</span>
   </div>`;
 
   // Append to container (after existing content)
@@ -1829,6 +1970,7 @@ showScreen('builder');
 (function() {
   const skEls = document.querySelectorAll('.sk');
   if (skEls[1]) setSk('med', skEls[1]);
+  updateCheckBtnState();
 })();
 </script>
 </body>
