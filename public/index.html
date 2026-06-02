@@ -801,7 +801,7 @@ function fillParsed(c) {
 /* ═══════════════ API: PARSE (Screen 1 → 2) ═══════════════ */
 async function doUnderstand() {
   try {
-    const res = await fetch('/api/claude-understand', {
+    const res = await fetch('/.netlify/functions/claude-understand', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({text: originalPromptText})
@@ -870,7 +870,7 @@ async function doGenerate() {
 
   const c = CASES.merge;
   try {
-    const res = await fetch('/api/claude-generate', {
+    const res = await fetch('/.netlify/functions/claude-generate', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
@@ -1182,7 +1182,7 @@ async function doReviewAgain() {
     if (rvBtn) { rvBtn.innerHTML = '⟳ Re-reading…'; rvBtn.disabled = true; }
     try {
       const combined = originalPromptText + '\n\nAdditional context: ' + extra.trim();
-      const res = await fetch('/api/claude-understand', {
+      const res = await fetch('/.netlify/functions/claude-understand', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({text: combined})
       });
