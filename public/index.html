@@ -747,12 +747,12 @@ function startParsing() {
   }, 400);
 }
 
-function fillParsed() {
-  const c = CASES[currentCase];
+function fillParsed(c) {
+  if (!c) c = CASES[currentCase];
   document.getElementById('pz-parsing').style.display = 'none';
   document.getElementById('pz-banner').style.display = 'block';
   document.getElementById('or-div').style.display = 'none';
-  document.getElementById('pb-detail').textContent = (c.files.length ? c.files.length + ' files detected · ' : '') + 'Fields filled from your description';
+  document.getElementById('pb-detail').textContent = (c.files && c.files.length ? c.files.length + ' files detected · ' : '') + 'Fields filled from your description';
 
   // Fill fields
   const fieldMap = {goal: c.goal, ctx: c.ctx, fmt: c.fmt, role: c.role, con: c.con};
@@ -824,10 +824,19 @@ async function doUnderstand() {
     data.outputs = data.outputs || CASES.merge.outputs;
     data.reasons = data.reasons || CASES.merge.reasons;
     Object.assign(CASES.merge, data);
-    fillParsed();
+    fillParsed(data);
   } catch(e) {
-    console.warn('Parse API unavailable, using demo data:', e.message);
-    fillParsed();
+    console.warn('Parse API unavailable, using plain input as fallback:', e.message);
+    const pzFiles = Array.from(document.querySelectorAll('#pz-file-list .file-chip'))
+      .map(el => el.textContent.replace('📎 ','').replace('×','').trim()).filter(Boolean);
+    const fallback = {
+      goal: originalPromptText.slice(0, 500),
+      ctx: '', fmt: '', role: '', con: '',
+      stakes: 'med', files: pzFiles,
+      outputs: CASES.merge.outputs, reasons: CASES.merge.reasons
+    };
+    Object.assign(CASES.merge, fallback);
+    fillParsed(fallback);
   }
 }
 
