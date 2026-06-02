@@ -806,7 +806,12 @@ async function doUnderstand() {
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({text: originalPromptText})
     });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
+    if (!res.ok) {
+      let errBody = {};
+      try { errBody = await res.json(); } catch {}
+      console.error('API error detail:', JSON.stringify(errBody));
+      throw new Error('HTTP ' + res.status + (errBody.error ? ': ' + errBody.error : '') + (errBody.stack ? ' | ' + errBody.stack : ''));
+    }
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     // Attach files from paste-zone chip list
