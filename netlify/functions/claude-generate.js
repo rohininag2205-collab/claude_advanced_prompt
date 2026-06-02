@@ -261,12 +261,13 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'goal field is required' }) };
   }
 
-  // Prototypes need fast turnaround to stay within Netlify's 10s function limit.
-  // Use Haiku for prototype generation and cap tokens at 3000 (enough for 2 screens).
+  // All tasks must complete within Netlify's 10s function timeout.
+  // Use Haiku for prototypes; cap all other tasks at 1500 tokens (ample for 2-3 HTML sections).
+  // Opus is too slow for synchronous Netlify functions — fall back to Sonnet 4.6.
   const selectedModel = taskType === 'prototype'
     ? 'claude-haiku-4-5-20251001'
-    : (MODEL_MAP[model] || 'claude-sonnet-4-6');
-  const maxTokens = taskType === 'prototype' ? 3000 : 4096;
+    : (model === 'opus' ? 'claude-sonnet-4-6' : (MODEL_MAP[model] || 'claude-sonnet-4-6'));
+  const maxTokens = taskType === 'prototype' ? 3000 : 1500;
 
   const answersText = answers && answers.length > 0
     ? answers.map(a => {
