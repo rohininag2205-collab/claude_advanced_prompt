@@ -621,6 +621,7 @@ textarea.inp:focus-visible{outline:none;border-color:var(--cl);box-shadow:0 0 0 
       </div>
       <div style="display:flex;align-items:center;gap:12px;margin-top:4px;flex-wrap:wrap">
         <button class="btn-p" id="looks-good-btn" onclick="handleLooksGood()">Run Next →</button>
+        <span id="run-blocked-label" style="display:none;font-size:12px;color:var(--warn);font-weight:600;">&#9888; Review changes first</span>
         <button class="btn-o" id="review-again-btn" style="display:none" onclick="doReviewAgain()">&#8635; Review updates</button>
         <button class="btn-ghost" onclick="goStep(1)">← Back to editing</button>
       </div>
@@ -864,7 +865,7 @@ async function doGenerate() {
       body: JSON.stringify({
         goal: c.goal, ctx: c.ctx, fmt: c.fmt, role: c.role, con: c.con,
         stakes: c.stakes, model: model, interpretation: c.interpretation,
-        answers, files: currentFiles
+        answers, files: currentFiles, taskType: detectTaskType(c.goal)
       })
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -1146,8 +1147,17 @@ function showReviewGate() {
   chipsEdited = true;
   const banner = document.getElementById('review-needed-banner');
   const rvBtn = document.getElementById('review-again-btn');
-  if(banner) { banner.style.display = 'block'; banner.scrollIntoView({behavior:'smooth',block:'nearest'}); }
-  if(rvBtn) rvBtn.style.display = 'inline-flex';
+  const runBtn = document.getElementById('looks-good-btn');
+  const blockedLabel = document.getElementById('run-blocked-label');
+  if(banner) banner.style.display = 'block';
+  if(rvBtn) {
+    rvBtn.style.display = 'inline-flex';
+    // Make "Review updates" the primary CTA when changes are pending
+    rvBtn.className = 'btn-p';
+  }
+  // Dim Run Next and show inline blocker label
+  if(runBtn) { runBtn.style.opacity = '0.35'; runBtn.style.pointerEvents = 'none'; runBtn.title = 'Review your changes first'; }
+  if(blockedLabel) blockedLabel.style.display = 'inline';
 }
 let chipsEdited = false;
 
@@ -1175,6 +1185,22 @@ function selAssumption(el, cardId) {
   el.classList.add('sel');
   const card = document.getElementById(cardId);
   if (card) card.dataset.answered = 'true';
+  // Inject clarification textarea when user selects a "clarify/adjust" option
+  const isClarify = /clarify|adjust/i.test(el.textContent);
+  if (card) {
+    const existing = card.querySelector('.clarify-inp');
+    if (existing) existing.remove();
+    if (isClarify) {
+      const ta = document.createElement('textarea');
+      ta.className = 'inp clarify-inp';
+      ta.rows = 2;
+      ta.placeholder = 'Type your clarification here…';
+      ta.style.marginTop = '10px';
+      ta.oninput = () => { card.dataset.clarification = ta.value; };
+      card.querySelector('.q-opts').insertAdjacentElement('afterend', ta);
+      setTimeout(() => ta.focus(), 50);
+    }
+  }
   updateRunBtn();
 }
 function skipAssumption(cardId) {
@@ -1289,12 +1315,27 @@ async function doReviewAgain() {
   chipsEdited = false;
   const banner = document.getElementById('review-needed-banner');
   const rvBtn = document.getElementById('review-again-btn');
+  const runBtn = document.getElementById('looks-good-btn');
+  const blockedLabel = document.getElementById('run-blocked-label');
   const extra = (document.getElementById('extra-details') || {}).value || '';
-  if (extra.trim() && originalPromptText) {
+
+  // Collect any inline card clarifications
+  const cardClarifications = [];
+  document.querySelectorAll('.qcard[data-clarification]').forEach(card => {
+    const q = card.querySelector('.qcard-q');
+    if (q && card.dataset.clarification) {
+      cardClarifications.push(q.textContent.trim() + ': ' + card.dataset.clarification);
+    }
+  });
+
+  const hasNewContext = (extra.trim() || cardClarifications.length > 0) && originalPromptText;
+  if (hasNewContext) {
     const origLabel = rvBtn ? rvBtn.innerHTML : '';
     if (rvBtn) { rvBtn.innerHTML = '⟳ Re-reading…'; rvBtn.disabled = true; }
     try {
-      const combined = originalPromptText + '\n\nAdditional context: ' + extra.trim();
+      const combined = originalPromptText
+        + (extra.trim() ? '\n\nExtra context from user: ' + extra.trim() : '')
+        + (cardClarifications.length ? '\n\nUser clarifications: ' + cardClarifications.join('; ') : '');
       const res = await fetch('/.netlify/functions/claude-understand', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({text: combined})
@@ -1306,27 +1347,39 @@ async function doReviewAgain() {
         data.outputs = CASES.merge.outputs; data.reasons = CASES.merge.reasons;
         // Preserve original bullets and append the extra detail as a new bullet
         const origBullets = CASES.merge.interpretationBullets || (CASES.merge.interpretation || '').split(/(?<=[.!?])\s+/).filter(s => s.trim());
-        let extraBullet = extra.trim();
-        if (!/[.!?]$/.test(extraBullet)) extraBullet += '.';
-        extraBullet = extraBullet.charAt(0).toUpperCase() + extraBullet.slice(1);
-        // Only add bullet if not already present
-        const already = origBullets.some(b => b.toLowerCase().includes(extra.trim().toLowerCase().slice(0, 20)));
-        data.interpretationBullets = already ? origBullets : [...origBullets, extraBullet];
+        const allExtra = [
+          extra.trim(),
+          ...cardClarifications.map(c => c.split(': ').slice(1).join(': '))
+        ].filter(Boolean);
+        const newBullets = [...origBullets];
+        allExtra.forEach(txt => {
+          if (!newBullets.some(b => b.toLowerCase().includes(txt.toLowerCase().slice(0, 20)))) {
+            let bullet = txt.charAt(0).toUpperCase() + txt.slice(1);
+            if (!/[.!?]$/.test(bullet)) bullet += '.';
+            newBullets.push(bullet);
+          }
+        });
+        data.interpretationBullets = newBullets;
         Object.assign(CASES.merge, data);
         renderClarify();
       }
     } catch(e) { console.warn('Re-parse failed:', e.message); }
     if (rvBtn) { rvBtn.disabled = false; rvBtn.innerHTML = origLabel; }
   }
+
+  // Restore button states
   if(banner) banner.style.display = 'none';
+  if(blockedLabel) blockedLabel.style.display = 'none';
+  if(runBtn) { runBtn.style.opacity = ''; runBtn.style.pointerEvents = ''; runBtn.title = ''; }
   if(rvBtn) {
-    const orig = rvBtn.innerHTML;
+    rvBtn.className = 'btn-o';
     rvBtn.innerHTML = '✓ Reviewed — you can proceed';
     rvBtn.style.background = 'var(--okL)';
     rvBtn.style.borderColor = 'var(--okB)';
     rvBtn.style.color = 'var(--ok)';
-    setTimeout(()=>{ rvBtn.style.display='none'; rvBtn.innerHTML=orig; rvBtn.style.background=''; rvBtn.style.borderColor=''; rvBtn.style.color=''; }, 1800);
+    setTimeout(()=>{ rvBtn.style.display='none'; rvBtn.style.background=''; rvBtn.style.borderColor=''; rvBtn.style.color=''; }, 1800);
   }
+  updateRunBtn();
 }
 function onExtraDetailsInput() {
   showReviewGate(); // typing triggers review gate
@@ -1415,6 +1468,21 @@ function selQ(el, cardId) {
   el.classList.add('sel');
   const card = document.getElementById(cardId);
   if (card) card.dataset.answered = 'true';
+  const isClarify = /clarify|adjust|other/i.test(el.textContent);
+  if (card) {
+    const existing = card.querySelector('.clarify-inp');
+    if (existing) existing.remove();
+    if (isClarify) {
+      const ta = document.createElement('textarea');
+      ta.className = 'inp clarify-inp';
+      ta.rows = 2;
+      ta.placeholder = 'Type your clarification here…';
+      ta.style.marginTop = '10px';
+      ta.oninput = () => { card.dataset.clarification = ta.value; };
+      card.querySelector('.q-opts').insertAdjacentElement('afterend', ta);
+      setTimeout(() => ta.focus(), 50);
+    }
+  }
   updateRunBtn();
 }
 function skipQ(cardId, btn) {
@@ -1432,27 +1500,48 @@ function skipQ(cardId, btn) {
   updateRunBtn();
 }
 
+/* ═══════════════ TASK TYPE DETECTION ═══════════════ */
+function detectTaskType(goal) {
+  const g = (goal || '').toLowerCase();
+  if (/\b(job|jobs|role|roles|position|hire|career|employ|opportunit|apply|applicat|recrui|salary|lpa|opening)\b/.test(g)) return 'jobsearch';
+  if (/\b(prototype|screen|app|ui|ux|design|html|interface|wireframe|figma)\b/.test(g)) return 'prototype';
+  if (/\b(resume|cv|rewrite|document|write|draft|email|letter|report|essay|blog|article|copy)\b/.test(g)) return 'document';
+  return 'generic';
+}
+
 /* ═══════════════ OUTPUT RENDERING ═══════════════ */
 function renderOutput() {
   const c = CASES[currentCase];
   const container = document.getElementById('output-content');
   locked = new Set();
 
+  const taskType = detectTaskType(c.goal);
   let html = '';
 
   // Title area
+  const titleMap = {
+    jobsearch: 'Your career analysis — review and refine',
+    document: 'Your result — review before using',
+    prototype: 'Your prototype — review each screen',
+    generic: 'Your results — review before using'
+  };
+  const subtitleMap = {
+    jobsearch: 'Based on your background. Sections show confidence level — green means Claude is sure, amber means worth checking.',
+    document: 'Click status tags for details · ✏ Edit inline · Lock &#128274; the parts you\'re happy with',
+    prototype: 'Accept each screen individually. Once all are accepted, export combines them.',
+    generic: 'Click status tags for details · Hover <span style="background:var(--blueL);border-bottom:2px solid #93C5FD;padding:0 4px;border-radius:2px">blue text</span> for Claude\'s notes · ✏ Edit inline · Lock &#128274; the parts you\'re happy with'
+  };
+
   html += `<div style="display:flex;align-items:center;gap:12px;margin-bottom:17px">
     <div style="flex:1">
-      <div style="font-size:22px;font-weight:700;margin-bottom:3px">Your results — review before using</div>
-      <div style="font-size:12.5px;color:var(--tx3)">
-        Click status tags for details · Hover <span style="background:var(--blueL);border-bottom:2px solid #93C5FD;padding:0 4px;border-radius:2px">blue text</span> for Claude's notes · ✏ Edit inline · Lock &#128274; the parts you're happy with
-      </div>
+      <div style="font-size:22px;font-weight:700;margin-bottom:3px">${titleMap[taskType]}</div>
+      <div style="font-size:12.5px;color:var(--tx3)">${subtitleMap[taskType]}</div>
     </div>
     <button class="btn-o" onclick="goStep(2)" style="font-size:12.5px;padding:7px 14px;flex-shrink:0">← Back to Review</button>
   </div>`;
 
-  // Screen-by-screen nav for multi-screen outputs (e.g. prototype)
-  if (c.screenByScreen) {
+  // Screen-by-screen nav for prototype mode
+  if (c.screenByScreen || taskType === 'prototype') {
     html += `<div style="background:var(--blueL);border:1.5px solid var(--blueB);border-radius:10px;padding:12px 16px;margin-bottom:14px;">
       <div style="font-size:13px;font-weight:700;color:var(--blue);margin-bottom:6px;">&#128196; This task has ${c.outputs.length} screens — review each one</div>
       <div style="font-size:12px;color:var(--tx2);margin-bottom:10px;">Accept each screen individually. Once all screens are accepted, Claude combines them into one working prototype file.</div>
@@ -1462,24 +1551,79 @@ function renderOutput() {
     </div>`;
   }
 
-  // Output sections
-  c.outputs.forEach((out, idx) => {
-    const secId = 'os'+(idx+1);
-    const actsId = 'acts'+(idx+1);
-    const rId = 'r'+(idx+1);
-    html += `<div class="out-sec" id="${secId}">
-      <div class="os-hd">
-        <div class="os-title">${out.title}</div>
-        <div class="os-acts" id="${actsId}">
-          <span class="badge ${out.badge}" onclick="toggleR('${rId}')">${out.badgeText}</span>
-          <button class="btn-edit" onclick="startEdit('${secId}','${actsId}','${rId}')">✏ Edit</button>
-          <button class="btn-lock" onclick="lockSec('${secId}','${actsId}')">Accept &#128274;</button>
+  // Output sections — rendered differently per task type
+  if (taskType === 'jobsearch') {
+    // Group by confidence tier
+    const tier1 = c.outputs.filter(o => o.badge === 'bv');
+    const tier2 = c.outputs.filter(o => o.badge === 'br');
+    const tier3 = c.outputs.filter(o => o.badge === 'bd');
+
+    const renderTierSection = (outs, tierTitle, tierStyle) => {
+      if (!outs.length) return '';
+      let s = `<div style="font-size:11.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:${tierStyle.color};margin-bottom:10px;margin-top:${tierStyle.mt||'0'}">${tierTitle}</div>`;
+      outs.forEach((out, i) => {
+        const globalIdx = c.outputs.indexOf(out);
+        const secId = 'os'+(globalIdx+1);
+        const actsId = 'acts'+(globalIdx+1);
+        const rId = 'r'+(globalIdx+1);
+        s += `<div class="out-sec" id="${secId}" style="border-color:${tierStyle.border}">
+          <div class="os-hd">
+            <div class="os-title">${out.title}</div>
+            <div class="os-acts" id="${actsId}">
+              <span class="badge ${out.badge}" onclick="toggleR('${rId}')">${out.badgeText}</span>
+              <button class="btn-edit" onclick="startEdit('${secId}','${actsId}','${rId}')">✏ Edit</button>
+              <button class="btn-lock" onclick="lockSec('${secId}','${actsId}')">Accept &#128274;</button>
+            </div>
+          </div>
+          <div class="os-body"><div class="os-txt" id="txt${globalIdx+1}">${out.txt}</div></div>
+          <div class="reason-panel" id="${rId}">${c.reasons[out.reasonKey]||''}</div>
+        </div>`;
+      });
+      return s;
+    };
+
+    html += renderTierSection(tier1, '✓ High confidence', {color:'var(--ok)', border:'var(--okB)', mt:'0'});
+    html += renderTierSection(tier2, '⚠ Worth checking', {color:'var(--warn)', border:'var(--warnB)', mt:'20px'});
+    if (tier3.length) {
+      html += `<div style="font-size:11.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--danger);margin-bottom:10px;margin-top:20px">? Claude wasn't sure — needs your input</div>`;
+      tier3.forEach(out => {
+        const globalIdx = c.outputs.indexOf(out);
+        const secId = 'os'+(globalIdx+1);
+        const actsId = 'acts'+(globalIdx+1);
+        const rId = 'r'+(globalIdx+1);
+        html += `<div class="out-sec" id="${secId}" style="border-color:var(--dangerB);background:var(--dangerL)">
+          <div class="os-hd">
+            <div class="os-title">${out.title}</div>
+            <div class="os-acts" id="${actsId}">
+              <span class="badge ${out.badge}" onclick="toggleR('${rId}')">${out.badgeText}</span>
+              <button class="btn-edit" onclick="startEdit('${secId}','${actsId}','${rId}')">✏ Correct this</button>
+            </div>
+          </div>
+          <div class="os-body"><div class="os-txt" id="txt${globalIdx+1}">${out.txt}</div></div>
+          <div class="reason-panel" id="${rId}">${c.reasons[out.reasonKey]||''}</div>
+        </div>`;
+      });
+    }
+  } else {
+    // Generic / document / prototype rendering — original uniform boxes
+    c.outputs.forEach((out, idx) => {
+      const secId = 'os'+(idx+1);
+      const actsId = 'acts'+(idx+1);
+      const rId = 'r'+(idx+1);
+      html += `<div class="out-sec" id="${secId}">
+        <div class="os-hd">
+          <div class="os-title">${out.title}</div>
+          <div class="os-acts" id="${actsId}">
+            <span class="badge ${out.badge}" onclick="toggleR('${rId}')">${out.badgeText}</span>
+            <button class="btn-edit" onclick="startEdit('${secId}','${actsId}','${rId}')">✏ Edit</button>
+            <button class="btn-lock" onclick="lockSec('${secId}','${actsId}')">Accept &#128274;</button>
+          </div>
         </div>
-      </div>
-      <div class="os-body"><div class="os-txt" id="txt${idx+1}">${out.txt}</div></div>
-      <div class="reason-panel" id="${rId}">${c.reasons[out.reasonKey]||''}</div>
-    </div>`;
-  });
+        <div class="os-body"><div class="os-txt" id="txt${idx+1}">${out.txt}</div></div>
+        <div class="reason-panel" id="${rId}">${c.reasons[out.reasonKey]||''}</div>
+      </div>`;
+    });
+  }
 
   // Refine panel
   html += `<div class="refine-panel">
@@ -1487,7 +1631,7 @@ function renderOutput() {
     <div class="refine-status" id="refine-status"><span class="unlock-pill">All sections unlocked</span></div>
     <div class="refine-input-wrap">
       <div class="refine-inp-lbl">What should Claude change?</div>
-      <textarea class="refine-inp" id="refine-textarea" oninput="updateRerunBtn()" placeholder="e.g. The professional summary should be more concise. Also move the skills section back — I want it separate."></textarea>
+      <textarea class="refine-inp" id="refine-textarea" oninput="updateRerunBtn()" placeholder="e.g. Focus more on senior roles above 20 LPA. Add a section for remote-friendly companies."></textarea>
       <div class="refine-footer">
         <span class="refine-hint">&#128274; Locked sections will not be touched.</span>
         <button class="btn-p" id="rerun-btn" onclick="startRerun()">Re-run unlocked sections →</button>
