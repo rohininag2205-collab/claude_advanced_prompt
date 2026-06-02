@@ -261,8 +261,12 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'goal field is required' }) };
   }
 
-  const selectedModel = MODEL_MAP[model] || 'claude-sonnet-4-6';
-  const maxTokens = taskType === 'prototype' ? 8192 : 4096;
+  // Prototypes need fast turnaround to stay within Netlify's 10s function limit.
+  // Use Haiku for prototype generation and cap tokens at 3000 (enough for 2 screens).
+  const selectedModel = taskType === 'prototype'
+    ? 'claude-haiku-4-5-20251001'
+    : (MODEL_MAP[model] || 'claude-sonnet-4-6');
+  const maxTokens = taskType === 'prototype' ? 3000 : 4096;
 
   const answersText = answers && answers.length > 0
     ? answers.map(a => {
