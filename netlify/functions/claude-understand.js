@@ -102,12 +102,13 @@ exports.handler = async (event) => {
 
     return { statusCode: 200, headers, body: JSON.stringify(result) };
   } catch (e) {
-    const detail = e?.status ? `HTTP ${e.status}: ${e.message}` : e.message;
-    console.error('claude-understand error:', detail, e?.error || '');
+    const detail = e?.status ? `HTTP ${e.status}: ${e.message}` : (e.message || String(e));
+    const errorBody = e?.error || e?.cause || null;
+    console.error('claude-understand error:', detail, errorBody);
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ error: `Parsing failed: ${detail}`, detail: e?.error })
+      body: JSON.stringify({ error: `Parsing failed: ${detail}`, detail: errorBody, stack: e?.stack?.split('\n').slice(0,3).join(' | ') })
     };
   }
 };
